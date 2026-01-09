@@ -3,11 +3,11 @@
 on:
   push:
     tags:
-      - "v*"  # 当推送 v1.0.0 等标签时触发
-  workflow_dispatch: # 允许在网页上手动点击触发
+      - "v*"
+  workflow_dispatch: # 允许手动触发
 
 permissions:
-  contents: write # 赋予发布 Release 的权限
+  contents: write
 
 jobs:
   build-windows:
@@ -23,15 +23,10 @@ jobs:
         with:
           dotnet-version: 9.0.x
 
-      # 显式还原依赖，确保 CI 环境下载到正确的 NuGet 包
       - name: Restore Dependencies
         run: dotnet restore ./RimTransAI/RimTransAI.csproj
 
       - name: Publish Native AOT
-        # 这里的参数是为了双重保险，确保即使 csproj 漏了某些配置，CI 也能正确打包
-        # -p:PublishAot=true : 开启 AOT
-        # -p:PublishSingleFile=true : 开启单文件
-        # -p:IncludeNativeLibrariesForSelfExtract=true : 关键！解决 SkiaSharp 找不到 DLL 问题
         run: |
           dotnet publish ./RimTransAI/RimTransAI.csproj `
           -c Release `
@@ -44,14 +39,22 @@ jobs:
           -p:TrimMode=partial `
           -o ./publish
 
-      # 打包生成的 exe 文件
+      # 压缩文件
       - name: Compress Release
         run: |
           cd ./publish
-          # 排除 pdb 调试文件，只打包 exe
           Compress-Archive -Path *.exe -DestinationPath ../RimTransAI-Win64-AOT.zip
 
-      # 创建 Release 并上传
+      # === 新增：上传构建产物到 Actions 页面 ===
+      # 这样即使没有发布 Release，你也能在 Actions 运行记录的底部下载到这个文件
+      - name: Upload Artifact
+        uses: actions/upload-artifact@v4
+        with:
+          name: RimTransAI-Win64-AOT-Build
+          path: RimTransAI-Win64-AOT.zip
+          retention-days: 5
+
+      # === 创建 Release (仅限 Tag 触发) ===
       - name: Create Release
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
