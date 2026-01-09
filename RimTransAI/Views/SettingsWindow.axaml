@@ -1,0 +1,65 @@
+﻿<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:RimTransAI.ViewModels"
+        mc:Ignorable="d" d:DesignWidth="500" d:DesignHeight="600"
+        x:Class="RimTransAI.Views.SettingsWindow"
+        x:DataType="vm:SettingsViewModel"
+        Title="设置"
+        Width="500" 
+        SizeToContent="Height"
+        WindowStartupLocation="CenterOwner"
+        CanResize="True"
+        SystemDecorations="Full"
+        ExtendClientAreaToDecorationsHint="True"
+        Background="{DynamicResource SemiColorBackground0}">
+
+    <ScrollViewer VerticalScrollBarVisibility="Auto">
+        <Border Padding="25" Margin="0,30,0,0">
+            <StackPanel Spacing="20">
+                <TextBlock Text="参数设置" Classes="H4" Theme="{DynamicResource TitleTextBlock}"/>
+                
+                <StackPanel Spacing="8">
+                    <TextBlock Text="界面主题 (Theme)" Classes="Tertiary"/>
+                    <ComboBox SelectedIndex="{Binding SelectedThemeIndex}" HorizontalAlignment="Stretch">
+                        <ComboBoxItem>浅色模式 (Light)</ComboBoxItem>
+                        <ComboBoxItem>深色模式 (Dark)</ComboBoxItem>
+                    </ComboBox>
+                </StackPanel>
+
+                <StackPanel Spacing="8">
+                    <TextBlock Text="API 地址 (Base URL)" Classes="Tertiary"/>
+                    <TextBox Text="{Binding ApiUrl}" Watermark="例如: https://api.openai.com/v1/chat/completions"/>
+                    <TextBlock Text="* 提示: 使用 DeepSeek 时通常填 https://api.deepseek.com" 
+                               FontSize="12" Foreground="{DynamicResource SemiColorText3}"/>
+                </StackPanel>
+
+                <StackPanel Spacing="8">
+                    <TextBlock Text="API Key (令牌)" Classes="Tertiary"/>
+                    <TextBox Text="{Binding ApiKey}" PasswordChar="*" Watermark="sk-..." Classes="RevealPasswordButton"/>
+                </StackPanel>
+            
+                <StackPanel Spacing="8">
+                    <TextBlock Text="模型名称 (Model)" Classes="Tertiary"/>
+                    <TextBox Text="{Binding TargetModel}" Watermark="例如: gpt-3.5-turbo / deepseek-chat"/>
+                </StackPanel>
+
+                <StackPanel Spacing="8">
+                    <TextBlock Text="目标语言" Classes="Tertiary"/>
+                    <ComboBox SelectedIndex="{Binding SelectedLanguageIndex}" HorizontalAlignment="Stretch">
+                        <ComboBoxItem>简体中文 (Simplified)</ComboBoxItem>
+                        <ComboBoxItem>繁体中文 (Traditional)</ComboBoxItem>
+                    </ComboBox>
+                </StackPanel>
+
+                <Separator Margin="0,10"/>
+
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="15" Margin="0,0,0,10">
+                    <Button Content="取消" Command="{Binding CancelCommand}" Theme="{DynamicResource TertiaryButton}"/>
+                    <Button Content="保存配置" Command="{Binding SaveAndCloseCommand}" Theme="{DynamicResource SolidButton}" Classes="Primary"/>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+    </ScrollViewer>
+</Window>

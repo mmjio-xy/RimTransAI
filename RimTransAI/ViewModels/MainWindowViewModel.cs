@@ -3,85 +3,125 @@ using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
 using System.Threading.Tasks;
-using Avalonia.Platform.Storage; // 用于文件选择器
+using Avalonia;
+using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Platform.Storage;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Extensions.DependencyInjection;
 using RimTransAI.Models;
 using RimTransAI.Services;
+using RimTransAI.Views;
+// 需要这一行来解析 SettingsViewModel
+
+// 引用 Views 命名空间以使用 SettingsWindow
 
 namespace RimTransAI.ViewModels;
 
 public partial class MainWindowViewModel : ViewModelBase
 {
-    private readonly ModParserService _modParserService;
-    private readonly LlmService _llmService;
-    
+    private readonly ConfigService _configService; // 新增配置服务
     private readonly FileGeneratorService _fileGeneratorService;
+    private readonly LlmService _llmService;
+    private readonly ModParserService _modParserService;
 
     // 1. 数据源：存放扫描到的所有原始数据
     private List<TranslationItem> _allItems = new();
 
-    // 2. 视图源：绑定到 DataGrid，会根据筛选条件变化
-    public ObservableCollection<TranslationItem> TranslationItems { get; } = new();
+    // 内部状态：记录当前 Mod 路径
+    private string _currentModPath = string.Empty;
 
-    // 3. 版本列表：绑定到 ComboBox
-    public ObservableCollection<string> AvailableVersions { get; } = new();
+    [ObservableProperty] private bool _isTranslating = false;
 
-    // 4. UI 绑定属性
-    [ObservableProperty] 
-    private string _selectedVersion = "全部";
+    // 移除 ApiKey 属性，现在从 ConfigService 获取
 
-    [ObservableProperty] 
-    private string _apiKey = string.Empty;
-
-    [ObservableProperty] 
-    private string _logOutput = "就绪。请选择 Mod 文件夹开始...";
+    [ObservableProperty] private string _logOutput = "就绪。请选择 Mod 文件夹开始...";
 
     // 进度条相关
-    [ObservableProperty] 
-    private double _progressValue = 0;
+    [ObservableProperty] private double _progressValue = 0;
 
-    [ObservableProperty] 
-    private bool _isTranslating = false;
+    // 4. UI 绑定属性
+    [ObservableProperty] private string _selectedVersion = "全部";
 
     // =========================================================
     // 构造函数
     // =========================================================
 
-    // 1. 设计时预览用的无参构造函数 (避免 XAML 设计器报错)
-    public MainWindowViewModel(ModParserService modParserService, LlmService llmService, FileGeneratorService fileGeneratorService)
+    // 设计时构造函数
+    public MainWindowViewModel()
     {
         _modParserService = new ModParserService();
         _llmService = new LlmService();
-        _fileGeneratorService = fileGeneratorService;
+        _fileGeneratorService = new FileGeneratorService();
+        _configService = new ConfigService();
     }
 
-    // 2. 运行时依赖注入构造函数
-    public MainWindowViewModel(ModParserService modParserService, LlmService llmService)
+    // 运行时构造函数 (注入所有服务)
+    public MainWindowViewModel(
+        ModParserService modParserService,
+        LlmService llmService,
+        FileGeneratorService fileGeneratorService,
+        ConfigService configService)
     {
         _modParserService = modParserService;
         _llmService = llmService;
+        _fileGeneratorService = fileGeneratorService;
+        _configService = configService;
     }
+
+    // 2. 视图源：绑定到 DataGrid
+    public ObservableCollection<TranslationItem> TranslationItems { get; } = new();
+
+    // 3. 版本列表：绑定到 ComboBox
+    public ObservableCollection<string> AvailableVersions { get; } = new();
 
     // =========================================================
     // 核心逻辑
     // =========================================================
 
-    // 监听 SelectedVersion 变化，自动触发筛选
     partial void OnSelectedVersionChanged(string value)
     {
         ApplyFilter();
     }
 
     /// <summary>
-    /// 选择文件夹并扫描 Mod 内容
+    /// 打开设置窗口
+    /// </summary>
+    [RelayCommand]
+    private async Task OpenSettings()
+    {
+        // 获取当前主窗口
+        var topLevel = Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop
+            ? desktop.MainWindow
+            : null;
+
+        if (topLevel == null) return;
+
+        // 从 App.Services 中获取 SettingsViewModel 的新实例
+        // 注意：你需要确保 App.axaml.cs 中公开了 Services 属性，或者把 Services 设为静态
+        var app = (App)Application.Current!;
+        var settingsVm = app.Services.GetRequiredService<SettingsViewModel>();
+
+        var settingsWindow = new SettingsWindow
+        {
+            DataContext = settingsVm
+        };
+
+        // 模态显示设置窗口
+        await settingsWindow.ShowDialog(topLevel);
+
+        // 窗口关闭后提示
+        LogOutput += "\n设置已更新。";
+    }
+
+    /// <summary>
+    /// 选择 Mod 文件夹
     /// </summary>
     [RelayCommand]
     private async Task SelectFolder()
     {
-        // 获取当前窗口以弹出选择框
-        var topLevel = Avalonia.Application.Current?.ApplicationLifetime is Avalonia.Controls.ApplicationLifetimes.IClassicDesktopStyleApplicationLifetime desktop 
-            ? desktop.MainWindow 
+        var topLevel = Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop
+            ? desktop.MainWindow
             : null;
 
         if (topLevel == null) return;
@@ -95,24 +135,20 @@ public partial class MainWindowViewModel : ViewModelBase
         if (folders.Count == 0) return;
 
         var selectedPath = folders[0].Path.LocalPath;
-        _currentModPath = selectedPath;
+        _currentModPath = selectedPath; // 记录路径
         LogOutput = $"正在扫描: {selectedPath}";
 
-        // 后台扫描，避免卡顿界面
-        try 
+        try
         {
             _allItems = await Task.Run(() => _modParserService.ScanModFolder(selectedPath));
-            
+
             if (_allItems.Count == 0)
             {
                 LogOutput = "未找到有效的 XML 语言文件或 Defs 文件。";
                 return;
             }
 
-            // 更新版本下拉框
             UpdateVersionList();
-
-            // 默认重置为“全部”并刷新显示
             SelectedVersion = "全部";
             ApplyFilter();
 
@@ -124,15 +160,11 @@ public partial class MainWindowViewModel : ViewModelBase
         }
     }
 
-    /// <summary>
-    /// 更新下拉框的版本列表
-    /// </summary>
     private void UpdateVersionList()
     {
         AvailableVersions.Clear();
         AvailableVersions.Add("全部");
 
-        // 提取所有出现的版本号，去重并排序
         var versions = _allItems
             .Select(x => string.IsNullOrEmpty(x.Version) ? "根目录" : x.Version)
             .Distinct()
@@ -144,24 +176,18 @@ public partial class MainWindowViewModel : ViewModelBase
         }
     }
 
-    /// <summary>
-    /// 根据当前选中的版本筛选显示内容
-    /// </summary>
     private void ApplyFilter()
     {
         TranslationItems.Clear();
-
         if (_allItems.Count == 0) return;
 
         IEnumerable<TranslationItem> filtered;
-
         if (string.IsNullOrEmpty(SelectedVersion) || SelectedVersion == "全部")
         {
             filtered = _allItems;
         }
         else
         {
-            // 处理 "根目录" 和空字符串的对应关系
             var targetVersion = SelectedVersion == "根目录" ? "" : SelectedVersion;
             filtered = _allItems.Where(x => x.Version == targetVersion);
         }
@@ -170,8 +196,7 @@ public partial class MainWindowViewModel : ViewModelBase
         {
             TranslationItems.Add(item);
         }
-        
-        // 更新日志提示当前数量
+
         if (_allItems.Count > 0)
         {
             LogOutput = $"显示: {TranslationItems.Count} / {_allItems.Count} 条 (版本: {SelectedVersion})";
@@ -179,85 +204,128 @@ public partial class MainWindowViewModel : ViewModelBase
     }
 
     /// <summary>
-    /// 开始批量翻译
+    /// 开始翻译 (自动去重优化版)
     /// </summary>
     [RelayCommand]
     private async Task StartTranslation()
     {
-        // 基本检查
         if (TranslationItems.Count == 0)
         {
             LogOutput = "当前列表为空，请先加载 Mod 或切换版本。";
             return;
         }
-        if (string.IsNullOrWhiteSpace(ApiKey))
+
+        var config = _configService.CurrentConfig;
+
+        if (string.IsNullOrWhiteSpace(config.ApiKey))
         {
-            LogOutput = "错误：请输入 API Key";
+            LogOutput = "错误：未配置 API Key，请点击“参数设置”按钮进行配置。";
+            await OpenSettings();
             return;
         }
 
         IsTranslating = true;
         ProgressValue = 0;
-        
-        // 1. 获取待处理列表
-        // 注意：这里我们翻译当前 UI 列表中所有显示的项
-        var pendingItems = TranslationItems.ToList(); 
-        int total = pendingItems.Count;
-        int processed = 0;
-        
-        // 2. 批处理设置 (每批 20 条，避免 Token 溢出)
-        int batchSize = 20;
-        var chunks = pendingItems.Chunk(batchSize).ToList();
 
-        LogOutput = $"开始翻译：共 {total} 条，分 {chunks.Count} 批次处理...";
+        // 1. 获取当前视图中所有需要翻译的条目
+        // (不管是“未翻译”还是“已翻译”想重翻，都包含在内)
+        var allItems = TranslationItems.ToList();
+
+        // 2. 按“原文”进行分组去重
+        // key: 原文, value: 拥有该原文的所有条目列表
+        var distinctGroups = allItems
+            .GroupBy(x => x.OriginalText)
+            .ToList();
+
+        int totalGroups = distinctGroups.Count; // 实际需要翻译的唯一文本数量
+        int totalItems = allItems.Count; // 总条目数
+        int processedGroups = 0;
+
+        LogOutput = $"开始翻译：共 {totalItems} 条目，去重后需翻译 {totalGroups} 条文本...";
+        LogOutput += $"\n模型: {config.TargetModel} | 目标: {config.TargetLanguage}";
+
+        // 批处理大小 (按唯一文本计算)
+        int batchSize = 20;
+        var chunks = distinctGroups.Chunk(batchSize).ToList();
 
         try
         {
-            // 3. 循环处理每一批
             for (int i = 0; i < chunks.Count; i++)
             {
                 var chunk = chunks[i];
-                
-                // 构造 Dictionary<Key, Text> 发送给 AI
-                // 如果 Key 重复（虽然在 XML 里不应该重复），ToDictionary 会报错，所以用 Distinct 保护一下
-                var batchDict = chunk
-                    .GroupBy(x => x.Key)
-                    .ToDictionary(g => g.Key, g => g.First().OriginalText);
+
+                // 3. 构建发送给 AI 的字典
+                // 字典 Key 用原文的 Hash 或第一条目的 Key 都可以，这里为了方便回填，
+                // 我们直接把“原文”当作字典的 Key 发给 AI (AI 返回时也用原文对应)
+                // 但 LlmService 目前设计是 Key->Text。
+                // 为了兼容 LlmService 逻辑，我们选取每组的第一个 Item 的 Key 作为代表。
+
+                var batchDict = chunk.ToDictionary(
+                    group => group.First().Key, // 代表 Key
+                    group => group.Key // 原文 (group.Key 就是 OriginalText)
+                );
 
                 try
                 {
-                    // 调用 LLM Service
-                    var results = await _llmService.TranslateBatchAsync(ApiKey, batchDict);
+                    // 调用 LLM
+                    var results = await _llmService.TranslateBatchAsync(
+                        config.ApiKey,
+                        batchDict,
+                        config.ApiUrl,
+                        config.TargetModel,
+                        config.TargetLanguage
+                    );
 
-                    // 回填结果
-                    foreach (var item in chunk)
+                    // 4. 结果回填 (关键步骤)
+                    foreach (var group in chunk)
                     {
-                        if (results.TryGetValue(item.Key, out string? translated))
+                        // 找到这组数据的“代表 Key”
+                        var representativeKey = group.First().Key;
+
+                        // 检查 AI 是否返回了翻译
+                        if (results.TryGetValue(representativeKey, out string? translatedText) &&
+                            !string.IsNullOrWhiteSpace(translatedText))
                         {
-                            item.TranslatedText = translated;
-                            item.Status = "已翻译";
+                            // 广播：把翻译结果赋给该组下的【所有】条目
+                            foreach (var item in group)
+                            {
+                                item.TranslatedText = translatedText;
+                                item.Status = "已翻译";
+                            }
                         }
                         else
                         {
-                            // 偶尔 AI 可能会漏掉某些 Key
-                            item.Status = "AI跳过"; 
+                            // AI 没返回或跳过
+                            foreach (var item in group)
+                            {
+                                // 如果原来没翻译，标记为跳过；如果原来有翻译，保持不变
+                                if (string.IsNullOrEmpty(item.TranslatedText))
+                                    item.Status = "AI跳过";
+                            }
                         }
                     }
                 }
                 catch (Exception ex)
                 {
-                    LogOutput += $"\n批次 {i+1} 失败: {ex.Message}";
-                    foreach(var item in chunk) item.Status = "出错";
+                    LogOutput += $"\n批次 {i + 1} 失败: {ex.Message}";
+                    // 标记该批次所有条目为出错
+                    foreach (var group in chunk)
+                    {
+                        foreach (var item in group) item.Status = "出错";
+                    }
                 }
 
-                // 更新进度
-                processed += chunk.Length;
-                ProgressValue = (double)processed / total * 100;
-                
-                // 实时更新日志，让用户知道没卡死
-                LogOutput = $"翻译进度: {processed}/{total} ({ProgressValue:F1}%)";
+                processedGroups += chunk.Length;
+
+                // 进度条按“处理的唯一文本组数”计算
+                ProgressValue = (double)processedGroups / totalGroups * 100;
+
+                // 日志显示优化
+                // 计算实际覆盖了多少个条目
+                int coveredItems = chunks.Take(i + 1).Sum(c => c.Sum(g => g.Count()));
+                LogOutput = $"翻译进度: {processedGroups}/{totalGroups} (覆盖 {coveredItems}/{totalItems} 条)";
             }
-            
+
             LogOutput += "\n翻译任务全部完成！";
         }
         catch (Exception ex)
@@ -269,38 +337,29 @@ public partial class MainWindowViewModel : ViewModelBase
             IsTranslating = false;
         }
     }
-    
+
     /// <summary>
     /// 保存文件
     /// </summary>
     [RelayCommand]
     private async Task SaveFiles()
     {
-        if (TranslationItems.Count == 0) return;
-
-        // 假设 ModParserService 扫描时记录了 RootPath，或者我们重新获取
-        // 简单起见，我们假设用户没有在扫描后移动文件夹
-        // 更好的做法是在 ViewModel 里存一个 _currentModPath 变量
-        if (_allItems.Count == 0) return;
-    
-        // 从第一条数据反推 Mod 根目录有点麻烦，
-        // 建议在 SelectFolder 方法里就把 selectedPath 存到一个类成员变量里
-        if (string.IsNullOrEmpty(_currentModPath)) 
-        {
-            LogOutput = "错误：无法确定 Mod 路径，请重新选择文件夹。";
-            return;
-        }
+        if (TranslationItems.Count == 0 || string.IsNullOrEmpty(_currentModPath)) return;
 
         LogOutput = "正在生成 XML 文件...";
 
-        // 获取目标语言 (从 ComboBox 获取，这里先硬编码演示，你可以绑定属性)
-        string targetLang = "ChineseSimplified"; 
+        // 从配置获取目标语言文件夹名 (如 ChineseSimplified)
+        string targetLang = _configService.CurrentConfig.TargetLanguage;
 
-        int count = await Task.Run(() => _fileGeneratorService.GenerateFiles(_currentModPath, targetLang, _allItems));
-
-        LogOutput = $"保存成功！已生成 {count} 个 XML 文件。\n请检查 Mod 文件夹下的 Languages/{targetLang} 目录。";
+        try
+        {
+            int count =
+                await Task.Run(() => _fileGeneratorService.GenerateFiles(_currentModPath, targetLang, _allItems));
+            LogOutput = $"保存成功！已在 Languages/{targetLang} 下生成 {count} 个文件。";
+        }
+        catch (Exception ex)
+        {
+            LogOutput = $"保存失败: {ex.Message}";
+        }
     }
-
-// 记得在类里加这个字段用来存路径
-    private string _currentModPath = string.Empty;
 }

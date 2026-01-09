@@ -1,19 +1,19 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Net.Http;
-using System.Net.Http.Json;
+using System.Text;
 using System.Text.Json;
-using System.Text.Json.Nodes;
 using System.Threading.Tasks;
+using RimTransAI.Models;
 
 namespace RimTransAI.Services;
 
 public class LlmService
 {
     private readonly HttpClient _httpClient;
-    
+
     // 如果你用的是其他模型（如 DeepSeek/Ollama），在这里修改 BaseUrl
-    private const string BaseUrl = "https://api.deepseek.com/chat/completions"; 
+    // private const string BaseUrl = "https://api.deepseek.com/chat/completions";
     // private const string BaseUrl = "https://api.deepseek.com/chat/completions";
 
     public LlmService()
@@ -29,63 +29,69 @@ public class LlmService
     /// <param name="sourceTexts">Key: 原文ID, Value: 英文原文</param>
     /// <param name="targetLang">目标语言</param>
     /// <returns>Key: 原文ID, Value: 中文译文</returns>
-    public async Task<Dictionary<string, string>> TranslateBatchAsync(string apiKey, Dictionary<string, string> sourceTexts, string targetLang = "Simplified Chinese")
+    public async Task<Dictionary<string, string>> TranslateBatchAsync(
+    string apiKey, 
+    Dictionary<string, string> sourceTexts, 
+    string apiUrl, 
+    string model, 
+    string targetLang = "Simplified Chinese")
+{
+    if (sourceTexts.Count == 0) return new Dictionary<string, string>();
+
+    // 1. 序列化 User Content (这是一个 Dictionary)
+    // 使用 Context 序列化字典
+    var userContent = JsonSerializer.Serialize(sourceTexts, AppJsonContext.Default.DictionaryStringString);
+
+    var systemPrompt = $@"You are a professional translator for RimWorld. Target: {targetLang}. 
+Rules: Preserve XML tags, variables like {{0}}, and paths. Input/Output is JSON.";
+
+    // 2. 构造请求对象 (使用我们新建的 LlmRequest 类，替代匿名对象)
+    var requestBodyObj = new LlmRequest
     {
-        if (sourceTexts.Count == 0) return new Dictionary<string, string>();
-
-        // 1. 构造 System Prompt (核心！告诉 AI 它是谁，以及必须遵守的规则)
-        var systemPrompt = $@"You are a professional translator for the game RimWorld.
-Target Language: {targetLang}.
-Rules:
-1. Preserve all XML tags (e.g., <li>, <b>, <color>), variables (e.g., {{0}}, {{HUMAN_label}}), and file paths exactly as they are.
-2. Translate the content naturally, fitting the sci-fi/survival context of RimWorld.
-3. Input is a JSON object. Output MUST be a valid JSON object with the same keys.
-4. Do NOT output markdown code blocks (```json), just the raw JSON string.
-5. If a value is a technical string (like a defName 'Gun_Revolver'), do not translate it unless it's a label.";
-
-        // 2. 准备请求体
-        // 我们把 Dictionary 转成 JSON 字符串发给 AI
-        var userContent = JsonSerializer.Serialize(sourceTexts);
-
-        var requestBody = new
+        model = model,
+        messages = new List<LlmMessage>
         {
-            model = "deepseek-chat", // 建议用 gpt-4o-mini 或 deepseek-chat，性价比高
-            // model = "deepseek-chat", 
-            messages = new[]
-            {
-                new { role = "system", content = systemPrompt },
-                new { role = "user", content = userContent }
-            },
-            temperature = 0.3, // 低温度保证格式稳定
-            response_format = new { type = "json_object" } // 强制 JSON 模式 (OpenAI 特性，其他模型可能需移除)
-        };
+            new LlmMessage { role = "system", content = systemPrompt },
+            new LlmMessage { role = "user", content = userContent }
+        },
+        temperature = 0.3,
+        response_format = new LlmResponseFormat { type = "json_object" }
+    };
 
-        // 3. 发送请求
-        var request = new HttpRequestMessage(HttpMethod.Post, BaseUrl);
-        request.Headers.Add("Authorization", $"Bearer {apiKey}");
-        request.Content = JsonContent.Create(requestBody);
+    // 3. 序列化请求体 (使用 Context 序列化 LlmRequest)
+    var jsonBody = JsonSerializer.Serialize(requestBodyObj, AppJsonContext.Default.LlmRequest);
 
-        var response = await _httpClient.SendAsync(request);
-        response.EnsureSuccessStatusCode();
+    // 4. 发送请求
+    var request = new HttpRequestMessage(HttpMethod.Post, apiUrl);
+    request.Headers.Add("Authorization", $"Bearer {apiKey}");
+    request.Content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
 
-        // 4. 解析响应
-        var jsonResponse = await response.Content.ReadFromJsonAsync<JsonObject>();
-        var content = jsonResponse?["choices"]?[0]?["message"]?["content"]?.ToString();
+    var response = await _httpClient.SendAsync(request);
+    response.EnsureSuccessStatusCode();
 
-        if (string.IsNullOrEmpty(content)) return new Dictionary<string, string>();
+    // 5. 解析响应 (这里稍微麻烦点，因为我们没定义 Response 类，可以暂时用 JsonNode)
+    // 1. 先作为普通字符串读取出来
+    var rawResponse = await response.Content.ReadAsStringAsync();
 
-        // 5. 反序列化回 Dictionary
-        try 
-        {
-            // 清理可能存在的 Markdown 标记 (以防万一模型不听话)
-            content = content.Replace("```json", "").Replace("```", "").Trim();
-            return JsonSerializer.Deserialize<Dictionary<string, string>>(content) ?? new Dictionary<string, string>();
-        }
-        catch
-        {
-            // 如果 JSON 解析失败，返回空字典，避免程序崩溃
-            Console.WriteLine($"JSON Parse Error. Content: {content}");
-            return new Dictionary<string, string>();
-        }
+    // 2. 使用生成的 AOT 上下文手动反序列化
+    var jsonResponse = JsonSerializer.Deserialize(
+        rawResponse, 
+        AppJsonContext.Default.JsonObject
+    );
+    var content = jsonResponse?["choices"]?[0]?["message"]?["content"]?.ToString();
+
+    if (string.IsNullOrEmpty(content)) return new Dictionary<string, string>();
+
+    try 
+    {
+        content = content.Replace("```json", "").Replace("```", "").Trim();
+        // 使用 Context 反序列化结果字典
+        return JsonSerializer.Deserialize(content, AppJsonContext.Default.DictionaryStringString) 
+               ?? new Dictionary<string, string>();
     }
+    catch
+    {
+        return new Dictionary<string, string>();
+    }
+}
 }

@@ -3,68 +3,95 @@
         xmlns:vm="using:RimTransAI.ViewModels"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="600"
+        mc:Ignorable="d" d:DesignWidth="1100" d:DesignHeight="900"
         x:Class="RimTransAI.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
-        Title="RimTransAI - 边缘世界智能汉化"
+        Title="RimTrans AI - 边缘世界智能汉化"
         ExtendClientAreaToDecorationsHint="True"
-        Background="{DynamicResource SemiColorBackground0}"> 
-        <Grid ColumnDefinitions="280, *" Margin="0,30,0,0">
-        
-        <Border Grid.Column="0" Background="{DynamicResource SemiColorBackground0}" 
-                BorderBrush="{DynamicResource SemiColorBorder}" BorderThickness="0,0,1,0" Padding="20">
-            <StackPanel Spacing="15">
-                <TextBlock Text="配置面板" Classes="H4" Theme="{DynamicResource TitleTextBlock}"/>
-                
-                <TextBox InnerLeftContent="API" Watermark="sk-..." PasswordChar="*" 
-                         Text="{Binding ApiKey}"
-                         Classes="ClearButton" />
-                
-                <ComboBox PlaceholderText="目标语言" SelectedIndex="0" HorizontalAlignment="Stretch">
-                    <ComboBoxItem>简体中文 (ChineseSimplified)</ComboBoxItem>
-                    <ComboBoxItem>繁体中文 (ChineseTraditional)</ComboBoxItem>
-                </ComboBox>
+        SystemDecorations="Full"
+        Background="{DynamicResource SemiColorBackground0}">
 
-                <Separator Margin="0,10"/>
+    <Grid ColumnDefinitions="300, *" Margin="0,30,0,0">
 
-                <Button Content="1. 选择 Mod 文件夹" Command="{Binding SelectFolderCommand}" 
-                        Classes="Primary" Theme="{DynamicResource SolidButton}" HorizontalAlignment="Stretch"/>
-                
-                <TextBlock Text="版本过滤" Classes="H6" Theme="{DynamicResource TitleTextBlock}" Margin="0,5,0,0"/>
-                <ComboBox ItemsSource="{Binding AvailableVersions}" 
-                          SelectedItem="{Binding SelectedVersion}"
-                          HorizontalAlignment="Stretch"
-                          PlaceholderText="等待扫描...">
-                </ComboBox>
-                <TextBlock Text="* 仅翻译列表可见内容" FontSize="12" Foreground="{DynamicResource SemiColorText3}"/>
+        <Border Grid.Column="0" Background="{DynamicResource SemiColorBackground0}"
+                BorderBrush="{DynamicResource SemiColorBorder}"
+                BorderThickness="0,0,1,0"
+                Padding="20,10,20,20">
 
-                <Separator Margin="0,10"/>
+            <Grid RowDefinitions="Auto, *, Auto">
 
-                <Button Content="2. 开始 AI 翻译" Command="{Binding StartTranslationCommand}" 
-                        Classes="Success" Theme="{DynamicResource SolidButton}" HorizontalAlignment="Stretch"/>
-                
-                <Separator Margin="0,10"/>
-                <Button Content="3. 保存汉化文件" Command="{Binding SaveFilesCommand}" 
-                        Classes="Warning" Theme="{DynamicResource SolidButton}" HorizontalAlignment="Stretch"/>
-                
-                <ScrollViewer Height="100" Margin="0,20,0,0">
-                    <TextBlock Text="{Binding LogOutput}" TextWrapping="Wrap" 
-                               Foreground="{DynamicResource SemiColorText2}" FontSize="12"/>
+                <StackPanel Grid.Row="0" Spacing="5" Margin="0,5,0,20">
+                    <TextBlock Text="RimTrans AI"
+                               Classes="H3"
+                               Theme="{DynamicResource TitleTextBlock}"
+                               FontWeight="Bold"
+                               IsHitTestVisible="False" />
+                    <TextBlock Text="RimWorld Mod 智能汉化"
+                               Classes="Tertiary"
+                               FontSize="12"
+                               IsHitTestVisible="False" />
+                </StackPanel>
+
+                <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
+                    <StackPanel Spacing="15" Margin="0,0,10,0">
+                        <Button Content="⚙ 参数设置" Command="{Binding OpenSettingsCommand}"
+                                Theme="{DynamicResource TertiaryButton}" HorizontalAlignment="Stretch" />
+
+                        <Separator Margin="0,5" />
+
+                        <Button Content="1. 选择 Mod 文件夹" Command="{Binding SelectFolderCommand}"
+                                Classes="Primary" Theme="{DynamicResource SolidButton}" HorizontalAlignment="Stretch" />
+
+                        <StackPanel Spacing="5">
+                            <TextBlock Text="版本过滤" Classes="H6" Theme="{DynamicResource TitleTextBlock}" />
+                            <ComboBox ItemsSource="{Binding AvailableVersions}"
+                                      SelectedItem="{Binding SelectedVersion}"
+                                      HorizontalAlignment="Stretch"
+                                      PlaceholderText="等待扫描..." />
+                            <TextBlock Text="* 仅翻译列表可见内容" FontSize="12" Foreground="{DynamicResource SemiColorText3}" />
+                        </StackPanel>
+
+                        <Separator Margin="0,5" />
+
+                        <Button Content="2. 开始 AI 翻译" Command="{Binding StartTranslationCommand}"
+                                Classes="Success" Theme="{DynamicResource SolidButton}" HorizontalAlignment="Stretch" />
+
+                        <Button Content="3. 保存汉化文件" Command="{Binding SaveFilesCommand}"
+                                Classes="Warning" Theme="{DynamicResource SolidButton}" HorizontalAlignment="Stretch" />
+                    </StackPanel>
                 </ScrollViewer>
-            </StackPanel>
+
+                <StackPanel Grid.Row="2" Margin="0,20,0,0">
+                    <TextBlock Text="运行日志" Classes="Tertiary" Margin="0,0,0,8" />
+
+                    <Border Height="100"
+                            Background="{DynamicResource SemiColorFill0}"
+                            BorderBrush="{DynamicResource SemiColorBorder}"
+                            BorderThickness="1"
+                            CornerRadius="4">
+
+                        <ScrollViewer VerticalScrollBarVisibility="Auto">
+                            <TextBlock Text="{Binding LogOutput}" TextWrapping="Wrap"
+                                Foreground="{DynamicResource SemiColorText2}" FontSize="12" />
+                        </ScrollViewer>
+                    </Border>
+                </StackPanel>
+            </Grid>
         </Border>
 
-        <DataGrid Grid.Column="1" Margin="10" 
+        <DataGrid Grid.Column="1" Margin="10"
                   ItemsSource="{Binding TranslationItems}"
                   IsReadOnly="True"
                   CanUserResizeColumns="True"
                   GridLinesVisibility="All"
-                  BorderThickness="1" BorderBrush="{DynamicResource SemiColorBorder}">
+                  BorderThickness="1"
+                  BorderBrush="{DynamicResource SemiColorBorder}"
+                  Background="{DynamicResource SemiColorBackground0}">
             <DataGrid.Columns>
                 <DataGridTextColumn Header="版本" Binding="{Binding Version}" Width="80" />
-                <DataGridTextColumn Header="Key" Binding="{Binding Key}" Width="150" />
-                <DataGridTextColumn Header="原文" Binding="{Binding OriginalText}" Width="2*" />
-                <DataGridTextColumn Header="译文 (预览)" Binding="{Binding TranslatedText}" Width="2*" />
+                <DataGridTextColumn Header="Key" Binding="{Binding Key}" Width="200" />
+                <DataGridTextColumn Header="原文" Binding="{Binding OriginalText}" Width="3*" />
+                <DataGridTextColumn Header="译文 (预览)" Binding="{Binding TranslatedText}" Width="3*" />
                 <DataGridTextColumn Header="状态" Binding="{Binding Status}" Width="100" />
             </DataGrid.Columns>
         </DataGrid>
