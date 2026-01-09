@@ -3,8 +3,8 @@
 on:
   push:
     tags:
-      - "v*"
-  workflow_dispatch: # 允许手动触发
+      - "v*" # 只有打 v 开头的标签才发版
+  workflow_dispatch: # 允许手动触发测试
 
 permissions:
   contents: write
@@ -27,6 +27,7 @@ jobs:
         run: dotnet restore ./RimTransAI/RimTransAI.csproj
 
       - name: Publish Native AOT
+        # 这里的关键是 -o ./publish 指定了输出目录
         run: |
           dotnet publish ./RimTransAI/RimTransAI.csproj `
           -c Release `
@@ -39,28 +40,32 @@ jobs:
           -p:TrimMode=partial `
           -o ./publish
 
-      # 压缩文件
-      - name: Compress Release
+      # === 修复 1: 打包所有文件 ===
+      # 使用通配符 * 而不是 *.exe，确保如果有 loose DLL 或 config 文件也能进去
+      - name: Compress for Release
         run: |
           cd ./publish
-          Compress-Archive -Path *.exe -DestinationPath ../RimTransAI-Win64-AOT.zip
+          Compress-Archive -Path * -DestinationPath ../RimTransAI-Win64.zip
 
-      # === 新增：上传构建产物到 Actions 页面 ===
-      # 这样即使没有发布 Release，你也能在 Actions 运行记录的底部下载到这个文件
-      - name: Upload Artifact
+      # === 修复 2: 解决两层压缩问题 ===
+      # 上传 Artifact 时，直接上传 ./publish 目录里的内容
+      # GitHub 会自动把它压缩成 RimTransAI-Artifact.zip (只有一层)
+      - name: Upload Artifact (For Testing)
         uses: actions/upload-artifact@v4
         with:
-          name: RimTransAI-Win64-AOT-Build
-          path: RimTransAI-Win64-AOT.zip
+          name: RimTransAI-Artifact
+          path: ./publish/* # <--- 这里改成了目录内容
           retention-days: 5
 
-      # === 创建 Release (仅限 Tag 触发) ===
+      # === 创建正式 Release ===
+      # Release 需要上传我们手动打好的那个 zip 包
       - name: Create Release
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
         with:
-          files: RimTransAI-Win64-AOT.zip
+          files: RimTransAI-Win64.zip
           draft: false
-          prerelease: false
+          # 自动判断是否为测试版 (Tag 包含 - 号则是测试版)
+          prerelease: ${{ contains(github.ref, '-') }}
           generate_release_notes: true
           token: ${{ secrets.GITHUB_TOKEN }}
