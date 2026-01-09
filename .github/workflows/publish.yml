@@ -3,8 +3,8 @@
 on:
   push:
     tags:
-      - "v*" # 只有打 v 开头的标签才发版
-  workflow_dispatch: # 允许手动触发测试
+      - "v*"
+  workflow_dispatch:
 
 permissions:
   contents: write
@@ -27,7 +27,6 @@ jobs:
         run: dotnet restore ./RimTransAI/RimTransAI.csproj
 
       - name: Publish Native AOT
-        # 这里的关键是 -o ./publish 指定了输出目录
         run: |
           dotnet publish ./RimTransAI/RimTransAI.csproj `
           -c Release `
@@ -36,36 +35,38 @@ jobs:
           -p:PublishAot=true `
           -p:PublishSingleFile=true `
           -p:IncludeNativeLibrariesForSelfExtract=true `
-          -p:StripSymbols=true `
           -p:TrimMode=partial `
+          -p:StripSymbols=true `
+          -p:DebugType=None `      
+          -p:DebugSymbols=false `  
           -o ./publish
 
-      # === 修复 1: 打包所有文件 ===
-      # 使用通配符 * 而不是 *.exe，确保如果有 loose DLL 或 config 文件也能进去
+      # === 清理与打包 ===
       - name: Compress for Release
         run: |
           cd ./publish
+          # 双重保险：强制删除可能存在的 pdb 文件
+          Get-ChildItem -Filter *.pdb | Remove-Item -Force -ErrorAction SilentlyContinue
+          
+          # 打包剩余的所有文件 (exe + dll + config)
           Compress-Archive -Path * -DestinationPath ../RimTransAI-Win64.zip
 
-      # === 修复 2: 解决两层压缩问题 ===
-      # 上传 Artifact 时，直接上传 ./publish 目录里的内容
-      # GitHub 会自动把它压缩成 RimTransAI-Artifact.zip (只有一层)
-      - name: Upload Artifact (For Testing)
+      # === 上传构建产物 (用于测试) ===
+      # 上传目录内容，GitHub 会自动打一层包，不会套娃
+      - name: Upload Artifact
         uses: actions/upload-artifact@v4
         with:
           name: RimTransAI-Artifact
-          path: ./publish/* # <--- 这里改成了目录内容
+          path: ./publish/*
           retention-days: 5
 
-      # === 创建正式 Release ===
-      # Release 需要上传我们手动打好的那个 zip 包
+      # === 创建 Release (仅 Tag 触发) ===
       - name: Create Release
         uses: softprops/action-gh-release@v1
         if: startsWith(github.ref, 'refs/tags/')
         with:
           files: RimTransAI-Win64.zip
           draft: false
-          # 自动判断是否为测试版 (Tag 包含 - 号则是测试版)
           prerelease: ${{ contains(github.ref, '-') }}
           generate_release_notes: true
           token: ${{ secrets.GITHUB_TOKEN }}
