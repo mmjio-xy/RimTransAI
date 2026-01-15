@@ -8,6 +8,7 @@
         x:DataType="vm:MainWindowViewModel"
         Title="RimTrans AI - 边缘世界智能汉化"
         ExtendClientAreaToDecorationsHint="True"
+        Icon="avares://RimTransAI/Assets/RimTrans.ico"
         SystemDecorations="Full"
         Background="{DynamicResource SemiColorBackground0}">
 

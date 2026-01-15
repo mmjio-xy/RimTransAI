@@ -30,7 +30,7 @@ public partial class App : Application
         collection.AddTransient<MainWindowViewModel>();
         collection.AddTransient<SettingsViewModel>();
         
-        // 将来在这里注册 Services
+        // 这里注册 Services
         collection.AddSingleton<ModParserService>();
         collection.AddSingleton<LlmService>();
         collection.AddSingleton<FileGeneratorService>();
@@ -74,13 +74,6 @@ public partial class App : Application
         if (Current is null) return;
 
         // 根据字符串切换 Avalonia 11 的 ThemeVariant
-        if (themeName == "Dark")
-        {
-            Current.RequestedThemeVariant = ThemeVariant.Dark;
-        }
-        else
-        {
-            Current.RequestedThemeVariant = ThemeVariant.Light;
-        }
+        Current.RequestedThemeVariant = themeName == "Dark" ? ThemeVariant.Dark : ThemeVariant.Light;
     }
 }
