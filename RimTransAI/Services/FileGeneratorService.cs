@@ -46,15 +46,19 @@ public class FileGeneratorService
             foreach (var item in groupItems)
             {
                 // --- 关键修改：添加原文注释 ---
-                
+
                 // XML 注释中不能包含 "--"，必须转义，否则游戏加载会报错
-                string safeOriginal = item.OriginalText.Replace("--", "- -");
-                
+                // 同时处理其他可能导致 XML 注释格式错误的字符
+                string safeOriginal = item.OriginalText
+                    .Replace("--", "- -")      // 双横线转义
+                    .Replace("<!--", "< !--")  // 注释开始标记转义
+                    .Replace("-->", "-- >");   // 注释结束标记转义
+
                 // 格式： EN: Original Text
                 root.Add(new XComment($" EN: {safeOriginal} "));
 
                 // --- 添加翻译内容 ---
-                
+
                 // 创建节点 <Key>Value</Key>
                 // 如果是 DefInjected，Key 类似于 ThingDef.label
                 root.Add(new XElement(item.Key, item.TranslatedText));
@@ -83,25 +87,26 @@ public class FileGeneratorService
     {
         string contentRoot = string.IsNullOrEmpty(version) ? modRoot : Path.Combine(modRoot, version);
 
+        // 标准化路径分隔符，统一使用当前系统的分隔符
+        string normalizedPath = originalPath.Replace('\\', Path.DirectorySeparatorChar)
+                                            .Replace('/', Path.DirectorySeparatorChar);
+
         // 处理 DefInjected
-        if (originalPath.Contains($"{Path.DirectorySeparatorChar}Defs{Path.DirectorySeparatorChar}") || originalPath.Contains("\\Defs\\"))
+        string defsPattern = $"{Path.DirectorySeparatorChar}Defs{Path.DirectorySeparatorChar}";
+        int defsIndex = normalizedPath.LastIndexOf(defsPattern, StringComparison.OrdinalIgnoreCase);
+
+        if (defsIndex != -1)
         {
-            int index = originalPath.LastIndexOf($"{Path.DirectorySeparatorChar}Defs{Path.DirectorySeparatorChar}", StringComparison.Ordinal);
-            if (index == -1) index = originalPath.LastIndexOf("\\Defs\\", StringComparison.Ordinal);
-            
-            if (index != -1)
-            {
-                // +6 是为了跳过 "/Defs/" 或 "\Defs\"
-                string relativePath = originalPath.Substring(index + 6); 
-                return Path.Combine(contentRoot, "Languages", targetLang, "DefInjected", relativePath);
-            }
+            // 跳过 "/Defs/" 部分
+            string relativePath = normalizedPath.Substring(defsIndex + defsPattern.Length);
+            return Path.Combine(contentRoot, "Languages", targetLang, "DefInjected", relativePath);
         }
 
         // 处理 Keyed
-        if (originalPath.Contains("Keyed"))
+        if (normalizedPath.Contains("Keyed", StringComparison.OrdinalIgnoreCase))
         {
-             string fileName = Path.GetFileName(originalPath);
-             return Path.Combine(contentRoot, "Languages", targetLang, "Keyed", fileName);
+            string fileName = Path.GetFileName(normalizedPath);
+            return Path.Combine(contentRoot, "Languages", targetLang, "Keyed", fileName);
         }
 
         return string.Empty;

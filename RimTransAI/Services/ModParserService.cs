@@ -3,8 +3,10 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
+using System.Xml;
 using System.Xml.Linq;
 using RimTransAI.Models;
+
 // 引入正则
 
 namespace RimTransAI.Services;
@@ -23,8 +25,8 @@ public class ModParserService
         "defName", "tag", "texPath", "workerClass", "soundMeleeHit", "soundMeleeMiss" 
     };
 
-    // 用于匹配版本号的正则 (匹配路径中的 \1.4\ 或 /1.5/ 等)
-    private static readonly Regex VersionRegex = new Regex(@"[\\/](1\.\d)[\\/]", RegexOptions.Compiled);
+    // 用于匹配版本号的正则 (匹配路径中的 \1.4\ 或 /1.5/ 或 /2.0/ 等，支持多位版本号)
+    private static readonly Regex VersionRegex = new Regex(@"[\\/](\d+\.\d+)[\\/]", RegexOptions.Compiled);
 
     public List<TranslationItem> ScanModFolder(string modPath)
     {
@@ -62,9 +64,21 @@ public class ModParserService
                     ExtractFields(defNode, defName, "", items, file, version);
                 }
             }
+            catch (XmlException ex)
+            {
+                Console.WriteLine($"XML格式错误 {file}: {ex.Message}");
+            }
+            catch (IOException ex)
+            {
+                Console.WriteLine($"文件读取失败 {file}: {ex.Message}");
+            }
+            catch (UnauthorizedAccessException ex)
+            {
+                Console.WriteLine($"文件访问被拒绝 {file}: {ex.Message}");
+            }
             catch (Exception ex)
             {
-                Console.WriteLine($"解析文件出错 {file}: {ex.Message}");
+                Console.WriteLine($"解析文件出错 {file}: {ex.GetType().Name} - {ex.Message}");
             }
         }
 

@@ -25,6 +25,9 @@ public partial class SettingsViewModel : ViewModelBase
     // 设计时构造函数
     public SettingsViewModel()
     {
+        // 设计时使用默认配置服务，避免空引用异常
+        _configService = new ConfigService();
+        LoadFromService();
     }
 
     public SettingsViewModel(ConfigService configService)

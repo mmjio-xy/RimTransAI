@@ -8,9 +8,15 @@ using RimTransAI.Models;
 
 namespace RimTransAI.Services;
 
-public class LlmService
+public class LlmService : IDisposable
 {
+    private static readonly HttpClient SharedHttpClient = new HttpClient
+    {
+        Timeout = TimeSpan.FromMinutes(2) // 翻译可能会慢，超时设长一点
+    };
+
     private readonly HttpClient _httpClient;
+    private bool _disposed = false;
 
     // 如果你用的是其他模型（如 DeepSeek/Ollama），在这里修改 BaseUrl
     // private const string BaseUrl = "https://api.deepseek.com/chat/completions";
@@ -18,8 +24,17 @@ public class LlmService
 
     public LlmService()
     {
-        _httpClient = new HttpClient();
-        _httpClient.Timeout = TimeSpan.FromMinutes(2); // 翻译可能会慢，超时设长一点
+        // 使用共享的静态 HttpClient 实例，避免端口耗尽问题
+        _httpClient = SharedHttpClient;
+    }
+
+    /// <summary>
+    /// 释放资源
+    /// </summary>
+    public void Dispose()
+    {
+        Dispose(true);
+        GC.SuppressFinalize(this);
     }
 
     /// <summary>
@@ -82,16 +97,53 @@ Rules: Preserve XML tags, variables like {{0}}, and paths. Input/Output is JSON.
 
     if (string.IsNullOrEmpty(content)) return new Dictionary<string, string>();
 
-    try 
+    try
     {
-        content = content.Replace("```json", "").Replace("```", "").Trim();
+        // 清理可能的 markdown 代码块标记（只在开头和结尾清理）
+        content = content.Trim();
+        if (content.StartsWith("```json"))
+        {
+            content = content.Substring(7); // 移除 "```json"
+        }
+        else if (content.StartsWith("```"))
+        {
+            content = content.Substring(3); // 移除 "```"
+        }
+
+        if (content.EndsWith("```"))
+        {
+            content = content.Substring(0, content.Length - 3); // 移除结尾的 "```"
+        }
+
+        content = content.Trim();
+
         // 使用 Context 反序列化结果字典
-        return JsonSerializer.Deserialize(content, AppJsonContext.Default.DictionaryStringString) 
+        return JsonSerializer.Deserialize(content, AppJsonContext.Default.DictionaryStringString)
                ?? new Dictionary<string, string>();
     }
-    catch
+    catch (JsonException ex)
     {
+        Console.WriteLine($"JSON解析失败: {ex.Message}");
+        Console.WriteLine($"响应内容: {content}");
+        return new Dictionary<string, string>();
+    }
+    catch (Exception ex)
+    {
+        Console.WriteLine($"翻译结果处理失败: {ex.GetType().Name} - {ex.Message}");
         return new Dictionary<string, string>();
     }
 }
+
+    protected virtual void Dispose(bool disposing)
+    {
+        if (!_disposed)
+        {
+            if (disposing)
+            {
+                // 注意：由于使用的是静态共享的 HttpClient，这里不需要释放
+                // 如果将来改为每个实例独立的 HttpClient，需要在这里调用 _httpClient?.Dispose()
+            }
+            _disposed = true;
+        }
+    }
 }

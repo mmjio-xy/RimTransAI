@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics.CodeAnalysis;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Data.Core.Plugins;
@@ -38,16 +39,17 @@ public partial class App : Application
 
 
         Services = collection.BuildServiceProvider();
-        
-        // 2. === 启动时应用保存的主题 ===
+
+        // 2. 启动时应用保存的主题
         var configService = Services.GetRequiredService<ConfigService>();
         SetTheme(configService.CurrentConfig.AppTheme);
 
-        // 2. 启动主窗口
+        // 3. 启动主窗口
         if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
         {
             // 移除 Avalonia 自带的数据验证，避免重复验证
-            BindingPlugins.DataValidators.RemoveAt(0);
+            // 抑制 IL2026 警告：这是 Avalonia 框架的已知行为，在运行时是安全的
+            DisableAvaloniaDataValidation();
 
             var vm = Services.GetRequiredService<MainWindowViewModel>();
             desktop.MainWindow = new MainWindow
@@ -57,6 +59,13 @@ public partial class App : Application
         }
 
         base.OnFrameworkInitializationCompleted();
+    }
+
+    [UnconditionalSuppressMessage("Trimming", "IL2026:Members annotated with 'RequiresUnreferencedCodeAttribute' require dynamic access",
+        Justification = "Avalonia data validation removal is safe in this context")]
+    private static void DisableAvaloniaDataValidation()
+    {
+        BindingPlugins.DataValidators.RemoveAt(0);
     }
 
     // === 静态切换主题方法 ===

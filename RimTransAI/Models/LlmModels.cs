@@ -11,7 +11,7 @@ public class LlmRequest
 
     // 使用 object 是为了兼容不同模型的格式，或者直接定义具体类型
     // 这里为了简单，针对 OpenAI 的 JSON 模式
-    public LlmResponseFormat response_format { get; set; }
+    public LlmResponseFormat response_format { get; set; } = new();
 }
 
 public class LlmMessage

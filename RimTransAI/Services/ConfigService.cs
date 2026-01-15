@@ -17,8 +17,8 @@ public class ConfigService
         LoadConfig();
     }
 
-    // 内存中的配置缓存
-    public AppConfig CurrentConfig { get; private set; }
+    // 内存中的配置缓存（初始化为默认值，避免 CS8618 警告）
+    public AppConfig CurrentConfig { get; private set; } = new AppConfig();
 
     public void LoadConfig()
     {
@@ -32,9 +32,17 @@ public class ConfigService
                                 ?? new AppConfig();
                 return;
             }
-            catch
+            catch (JsonException ex)
             {
-                // 读取失败则忽略，使用默认值
+                Console.WriteLine($"配置文件JSON格式错误: {ex.Message}，使用默认配置");
+            }
+            catch (IOException ex)
+            {
+                Console.WriteLine($"配置文件读取失败: {ex.Message}，使用默认配置");
+            }
+            catch (Exception ex)
+            {
+                Console.WriteLine($"加载配置失败: {ex.GetType().Name} - {ex.Message}，使用默认配置");
             }
         }
 
@@ -45,16 +53,9 @@ public class ConfigService
     {
         try
         {
-            // 使用 AOT 友好的上下文进行序列化 (格式化输出方便人工阅读)
-            var options = new JsonSerializerOptions
-            { 
-                WriteIndented = true,
-                TypeInfoResolver = AppJsonContext.Default // 绑定 AOT 上下文
-            };
-            // 使用 options 进行序列化
-            var json = JsonSerializer.Serialize(config, typeof(AppConfig), options);
+            // 使用 AOT 友好的序列化方法
+            var json = JsonSerializer.Serialize(config, AppJsonContext.Default.AppConfig);
             File.WriteAllText(_filePath, json);
-            CurrentConfig = config;
 
             // 更新内存缓存
             CurrentConfig = config;

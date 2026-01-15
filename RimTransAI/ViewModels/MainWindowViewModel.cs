@@ -12,6 +12,7 @@ using Microsoft.Extensions.DependencyInjection;
 using RimTransAI.Models;
 using RimTransAI.Services;
 using RimTransAI.Views;
+
 // 需要这一行来解析 SettingsViewModel
 
 // 引用 Views 命名空间以使用 SettingsWindow
@@ -50,10 +51,14 @@ public partial class MainWindowViewModel : ViewModelBase
     // 设计时构造函数
     public MainWindowViewModel()
     {
+        // 设计时初始化所有服务，避免空引用异常
         _modParserService = new ModParserService();
         _llmService = new LlmService();
         _fileGeneratorService = new FileGeneratorService();
         _configService = new ConfigService();
+
+        // 初始化版本列表，避免设计器报错
+        AvailableVersions.Add("全部");
     }
 
     // 运行时构造函数 (注入所有服务)
@@ -98,8 +103,9 @@ public partial class MainWindowViewModel : ViewModelBase
         if (topLevel == null) return;
 
         // 从 App.Services 中获取 SettingsViewModel 的新实例
-        // 注意：你需要确保 App.axaml.cs 中公开了 Services 属性，或者把 Services 设为静态
         var app = (App)Application.Current!;
+        if (app.Services == null) return;
+
         var settingsVm = app.Services.GetRequiredService<SettingsViewModel>();
 
         var settingsWindow = new SettingsWindow
@@ -217,9 +223,24 @@ public partial class MainWindowViewModel : ViewModelBase
 
         var config = _configService.CurrentConfig;
 
+        // 验证所有必需的配置项
         if (string.IsNullOrWhiteSpace(config.ApiKey))
         {
-            LogOutput = "错误：未配置 API Key，请点击“参数设置”按钮进行配置。";
+            LogOutput = "错误：未配置 API Key，请点击\"参数设置\"按钮进行配置。";
+            await OpenSettings();
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(config.ApiUrl))
+        {
+            LogOutput = "错误：未配置 API URL，请点击\"参数设置\"按钮进行配置。";
+            await OpenSettings();
+            return;
+        }
+
+        if (string.IsNullOrWhiteSpace(config.TargetModel))
+        {
+            LogOutput = "错误：未配置目标模型，请点击\"参数设置\"按钮进行配置。";
             await OpenSettings();
             return;
         }
@@ -240,6 +261,7 @@ public partial class MainWindowViewModel : ViewModelBase
         int totalGroups = distinctGroups.Count; // 实际需要翻译的唯一文本数量
         int totalItems = allItems.Count; // 总条目数
         int processedGroups = 0;
+        int coveredItems = 0; // 累计已覆盖的条目数
 
         LogOutput = $"开始翻译：共 {totalItems} 条目，去重后需翻译 {totalGroups} 条文本...";
         LogOutput += $"\n模型: {config.TargetModel} | 目标: {config.TargetLanguage}";
@@ -316,13 +338,13 @@ public partial class MainWindowViewModel : ViewModelBase
                 }
 
                 processedGroups += chunk.Length;
+                // 累加本批次覆盖的条目数
+                coveredItems += chunk.Sum(g => g.Count());
 
-                // 进度条按“处理的唯一文本组数”计算
+                // 进度条按"处理的唯一文本组数"计算
                 ProgressValue = (double)processedGroups / totalGroups * 100;
 
-                // 日志显示优化
-                // 计算实际覆盖了多少个条目
-                int coveredItems = chunks.Take(i + 1).Sum(c => c.Sum(g => g.Count()));
+                // 日志显示优化 - 使用累加器而不是重复计算
                 LogOutput = $"翻译进度: {processedGroups}/{totalGroups} (覆盖 {coveredItems}/{totalItems} 条)";
             }
 
