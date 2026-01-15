@@ -8,26 +8,40 @@
     <AvaloniaUseCompiledBindingsByDefault>true</AvaloniaUseCompiledBindingsByDefault>
     <ApplicationIcon>Assets\RimTrans.ico</ApplicationIcon>
 
+    <!-- Native AOT 配置 -->
     <PublishAot>true</PublishAot>
     <StripSymbols>true</StripSymbols>
     <TrimMode>full</TrimMode>
     <IsAotCompatible>true</IsAotCompatible>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
+
+    <!-- 添加这些优化配置 -->
+    <InvariantGlobalization>false</InvariantGlobalization>
+    <IlcOptimizationPreference>Speed</IlcOptimizationPreference>
+    <IlcGenerateStackTraceData>false</IlcGenerateStackTraceData>
   </PropertyGroup>
 
   <ItemGroup>
     <AvaloniaResource Include="Assets\**" />
+  </ItemGroup>
+
+  <ItemGroup>
     <PackageReference Include="Avalonia" Version="11.2.1" />
     <PackageReference Include="Avalonia.Desktop" Version="11.2.1" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.2.1" />
     <PackageReference Include="Avalonia.Fonts.Inter" Version="11.2.1" />
-
     <PackageReference Include="Semi.Avalonia" Version="11.2.1.2" />
     <PackageReference Include="Semi.Avalonia.DataGrid" Version="11.2.1.2" />
-
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.0" />
     <PackageReference Include="SkiaSharp.NativeAssets.Win32" Version="2.88.9" />
-    <TrimmerRootAssembly Include="SkiaSharp" Version="2.88.9" />
+  </ItemGroup>
+
+  <!-- 裁剪保护配置 -->
+  <ItemGroup>
+    <TrimmerRootAssembly Include="Avalonia.Themes.Fluent" />
+    <TrimmerRootAssembly Include="Semi.Avalonia" />
+    <TrimmerRootAssembly Include="Semi.Avalonia.DataGrid" />
+    <TrimmerRootAssembly Include="SkiaSharp" />
   </ItemGroup>
 </Project>
