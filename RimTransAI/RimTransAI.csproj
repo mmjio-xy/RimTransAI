@@ -23,6 +23,7 @@
 
   <ItemGroup>
     <AvaloniaResource Include="Assets\**" />
+    <AvaloniaResource Include="bin\x64\Debug\net9.0\settings.json" />
   </ItemGroup>
 
   <ItemGroup>
@@ -30,6 +31,7 @@
     <PackageReference Include="Avalonia.Desktop" Version="11.2.1" />
     <PackageReference Include="Avalonia.Themes.Fluent" Version="11.2.1" />
     <PackageReference Include="Avalonia.Fonts.Inter" Version="11.2.1" />
+    <PackageReference Include="Mono.Cecil" Version="0.11.6" />
     <PackageReference Include="Semi.Avalonia" Version="11.2.1.2" />
     <PackageReference Include="Semi.Avalonia.DataGrid" Version="11.2.1.2" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />

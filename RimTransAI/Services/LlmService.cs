@@ -123,13 +123,13 @@ Rules: Preserve XML tags, variables like {{0}}, and paths. Input/Output is JSON.
     }
     catch (JsonException ex)
     {
-        Console.WriteLine($"JSON解析失败: {ex.Message}");
-        Console.WriteLine($"响应内容: {content}");
+        Logger.Error($"JSON解析失败: {ex.Message}");
+        Logger.Error($"响应内容: {content}");
         return new Dictionary<string, string>();
     }
     catch (Exception ex)
     {
-        Console.WriteLine($"翻译结果处理失败: {ex.GetType().Name} - {ex.Message}");
+        Logger.Error($"翻译结果处理失败: {ex.GetType().Name} - {ex.Message}");
         return new Dictionary<string, string>();
     }
 }

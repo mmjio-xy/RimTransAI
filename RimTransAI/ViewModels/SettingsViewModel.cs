@@ -1,4 +1,6 @@
-﻿using Avalonia.Controls;
+﻿using System.Threading.Tasks;
+using Avalonia.Controls;
+using Avalonia.Platform.Storage;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using RimTransAI.Models;
@@ -15,6 +17,9 @@ public partial class SettingsViewModel : ViewModelBase
 
     // 绑定到 UI 的属性
     [ObservableProperty] private string _apiUrl = string.Empty;
+
+    // Assembly-CSharp.dll 路径
+    [ObservableProperty] private string _assemblyCSharpPath = string.Empty;
 
     // 下拉框选中的索引 (0: 简中, 1: 繁中)
     [ObservableProperty] private int _selectedLanguageIndex = 0;
@@ -45,6 +50,7 @@ public partial class SettingsViewModel : ViewModelBase
         ApiUrl = cfg.ApiUrl;
         ApiKey = cfg.ApiKey;
         TargetModel = cfg.TargetModel;
+        AssemblyCSharpPath = cfg.AssemblyCSharpPath;
 
         // 简单映射语言选择
         SelectedLanguageIndex = cfg.TargetLanguage == "ChineseTraditional" ? 1 : 0;
@@ -65,12 +71,13 @@ public partial class SettingsViewModel : ViewModelBase
             ApiKey = ApiKey,
             TargetModel = TargetModel,
             TargetLanguage = SelectedLanguageIndex == 1 ? "ChineseTraditional" : "ChineseSimplified",
-            AppTheme = newTheme
+            AppTheme = newTheme,
+            AssemblyCSharpPath = AssemblyCSharpPath
         };
 
         // 保存到磁盘
         _configService.SaveConfig(newConfig);
-        
+
         // 4. === 立即应用主题 ===
         App.SetTheme(newTheme);
 
@@ -82,5 +89,36 @@ public partial class SettingsViewModel : ViewModelBase
     private void Cancel()
     {
         CurrentWindow?.Close();
+    }
+
+    /// <summary>
+    /// 选择 Assembly-CSharp.dll 文件
+    /// </summary>
+    [RelayCommand]
+    private async Task SelectAssemblyCSharpFile()
+    {
+        if (CurrentWindow == null) return;
+
+        var files = await CurrentWindow.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
+        {
+            Title = "选择 Assembly-CSharp.dll 文件",
+            AllowMultiple = false,
+            FileTypeFilter = new[]
+            {
+                new FilePickerFileType("DLL 文件")
+                {
+                    Patterns = new[] { "*.dll" }
+                },
+                new FilePickerFileType("所有文件")
+                {
+                    Patterns = new[] { "*" }
+                }
+            }
+        });
+
+        if (files.Count > 0)
+        {
+            AssemblyCSharpPath = files[0].Path.LocalPath;
+        }
     }
 }

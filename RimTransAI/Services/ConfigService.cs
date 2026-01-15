@@ -34,15 +34,15 @@ public class ConfigService
             }
             catch (JsonException ex)
             {
-                Console.WriteLine($"配置文件JSON格式错误: {ex.Message}，使用默认配置");
+                Logger.Warning($"配置文件JSON格式错误: {ex.Message}，使用默认配置");
             }
             catch (IOException ex)
             {
-                Console.WriteLine($"配置文件读取失败: {ex.Message}，使用默认配置");
+                Logger.Warning($"配置文件读取失败: {ex.Message}，使用默认配置");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"加载配置失败: {ex.GetType().Name} - {ex.Message}，使用默认配置");
+                Logger.Error($"加载配置失败: {ex.GetType().Name} - {ex.Message}，使用默认配置");
             }
         }
 
@@ -62,7 +62,7 @@ public class ConfigService
         }
         catch (Exception ex)
         {
-            Console.WriteLine($"保存配置失败: {ex.Message}");
+            Logger.Error($"保存配置失败", ex);
         }
     }
 }

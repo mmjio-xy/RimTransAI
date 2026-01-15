@@ -8,4 +8,5 @@ public class AppConfig
     public string TargetModel { get; set; } = "gpt-3.5-turbo";
     public string TargetLanguage { get; set; } = "ChineseSimplified"; // 默认简中
     public string AppTheme { get; set; } = "Light";
+    public string AssemblyCSharpPath { get; set; } = ""; // Assembly-CSharp.dll 路径
 }

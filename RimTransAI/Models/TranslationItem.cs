@@ -22,6 +22,9 @@ public partial class TranslationItem : ObservableObject
 
     // 注意：以下属性不使用 ObservableProperty，因为它们在初始化后不会改变，不需要 UI 绑定通知
 
+    // Def 类型 (例如 "ThingDef", "RecipeDef")
+    public string DefType { get; set; } = string.Empty;
+
     // 所属版本 (例如 "1.4", "1.5", 空字符串表示根目录/通用版本)
     public string Version { get; set; } = string.Empty;
 

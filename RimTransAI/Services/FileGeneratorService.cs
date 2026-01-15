@@ -21,17 +21,19 @@ public class FileGeneratorService
         
         if (!validItems.Any()) return 0;
 
-        // 2. 按“来源文件”分组
-        var fileGroups = validItems.GroupBy(x => x.FilePath);
+        // 2. 按 DefType 和 Version 分组（DefInjected 使用 DefType 作为子文件夹）
+        // 对于 Keyed 类型，使用原始文件路径分组
+        var fileGroups = validItems.GroupBy(x => new { x.DefType, x.Version, x.FilePath });
 
         foreach (var group in fileGroups)
         {
-            var originalFilePath = group.Key;
+            var originalFilePath = group.Key.FilePath;
+            var defType = group.Key.DefType;
+            var version = group.Key.Version;
             var groupItems = group.ToList();
-            var version = groupItems.First().Version;
 
             // 3. 计算目标路径
-            string targetPath = DetermineOutputPath(modRootPath, originalFilePath, version, targetLang);
+            string targetPath = DetermineOutputPath(modRootPath, originalFilePath, defType, version, targetLang);
             if (string.IsNullOrEmpty(targetPath)) continue;
 
             // 4. 构建 XML 内容
@@ -70,20 +72,32 @@ public class FileGeneratorService
                 var dir = Path.GetDirectoryName(targetPath);
                 if (!Directory.Exists(dir)) Directory.CreateDirectory(dir!);
 
+                // 检查并移除只读属性（Steam Workshop 常见问题）
+                if (File.Exists(targetPath))
+                {
+                    var fileInfo = new FileInfo(targetPath);
+                    if (fileInfo.IsReadOnly)
+                    {
+                        Logger.Warning($"文件为只读，正在移除只读属性: {Path.GetFileName(targetPath)}");
+                        fileInfo.IsReadOnly = false;
+                    }
+                }
+
                 // Save 方法会自动格式化 XML（缩进和换行）
                 doc.Save(targetPath);
                 filesCount++;
+                Logger.Debug($"已保存: {targetPath}");
             }
             catch (Exception ex)
             {
-                Console.WriteLine($"写入失败 {targetPath}: {ex.Message}");
+                Logger.Error($"写入失败 {targetPath}", ex);
             }
         }
 
         return filesCount;
     }
 
-    private string DetermineOutputPath(string modRoot, string originalPath, string version, string targetLang)
+    private string DetermineOutputPath(string modRoot, string originalPath, string defType, string version, string targetLang)
     {
         string contentRoot = string.IsNullOrEmpty(version) ? modRoot : Path.Combine(modRoot, version);
 
@@ -91,24 +105,41 @@ public class FileGeneratorService
         string normalizedPath = originalPath.Replace('\\', Path.DirectorySeparatorChar)
                                             .Replace('/', Path.DirectorySeparatorChar);
 
-        // 处理 DefInjected
+        // 处理 DefInjected：强制使用 DefType 作为子文件夹名
         string defsPattern = $"{Path.DirectorySeparatorChar}Defs{Path.DirectorySeparatorChar}";
         int defsIndex = normalizedPath.LastIndexOf(defsPattern, StringComparison.OrdinalIgnoreCase);
 
-        if (defsIndex != -1)
+        if (defsIndex != -1 && !string.IsNullOrEmpty(defType))
         {
-            // 跳过 "/Defs/" 部分
-            string relativePath = normalizedPath.Substring(defsIndex + defsPattern.Length);
-            return Path.Combine(contentRoot, "Languages", targetLang, "DefInjected", relativePath);
+            // 使用 DefType 作为子文件夹，文件名使用原始文件名
+            string originalFileName = Path.GetFileName(normalizedPath);
+            return Path.Combine(contentRoot, "Languages", targetLang, "DefInjected", defType, originalFileName);
         }
 
         // 处理 Keyed
-        if (normalizedPath.Contains("Keyed", StringComparison.OrdinalIgnoreCase))
+        string keyedPattern = $"{Path.DirectorySeparatorChar}Keyed{Path.DirectorySeparatorChar}";
+        int keyedIndex = normalizedPath.LastIndexOf(keyedPattern, StringComparison.OrdinalIgnoreCase);
+
+        if (keyedIndex != -1)
         {
-            string fileName = Path.GetFileName(normalizedPath);
-            return Path.Combine(contentRoot, "Languages", targetLang, "Keyed", fileName);
+            // 保留 Keyed 之后的完整子目录结构
+            // 例如: Keyed/Battle/Strings.xml -> Languages/ChineseSimplified/Keyed/Battle/Strings.xml
+            string relativePath = normalizedPath.Substring(keyedIndex + keyedPattern.Length);
+            return Path.Combine(contentRoot, "Languages", targetLang, "Keyed", relativePath);
         }
 
+        // 处理 DLL 或虚拟路径（来自反射分析的数据）
+        if (normalizedPath.Contains(".dll", StringComparison.OrdinalIgnoreCase) ||
+            normalizedPath.StartsWith("[") ||
+            !Path.IsPathRooted(normalizedPath))
+        {
+            // 强制保存到 Keyed/Generated_Code.xml
+            Logger.Info($"检测到虚拟路径或 DLL 来源: {originalPath}，保存到 Generated_Code.xml");
+            return Path.Combine(contentRoot, "Languages", targetLang, "Keyed", "Generated_Code.xml");
+        }
+
+        // 未识别的路径类型，记录警告
+        Logger.Warning($"无法确定输出路径: {originalPath}");
         return string.Empty;
     }
 }

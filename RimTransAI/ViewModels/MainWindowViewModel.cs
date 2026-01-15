@@ -52,10 +52,11 @@ public partial class MainWindowViewModel : ViewModelBase
     public MainWindowViewModel()
     {
         // 设计时初始化所有服务，避免空引用异常
-        _modParserService = new ModParserService();
+        var reflectionAnalyzer = new ReflectionAnalyzer();
+        _configService = new ConfigService();
+        _modParserService = new ModParserService(reflectionAnalyzer, _configService);
         _llmService = new LlmService();
         _fileGeneratorService = new FileGeneratorService();
-        _configService = new ConfigService();
 
         // 初始化版本列表，避免设计器报错
         AvailableVersions.Add("全部");
@@ -146,11 +147,27 @@ public partial class MainWindowViewModel : ViewModelBase
 
         try
         {
+            // 检查是否配置了 Assembly-CSharp.dll
+            var config = _configService.CurrentConfig;
+            if (string.IsNullOrWhiteSpace(config.AssemblyCSharpPath))
+            {
+                LogOutput = "错误：未配置 Assembly-CSharp.dll 路径\n";
+                LogOutput += "请先点击【参数设置】按钮，配置 Assembly-CSharp.dll 的路径\n";
+                LogOutput += "该文件通常位于：\n";
+                LogOutput += "Steam: steamapps/common/RimWorld/RimWorldWin64_Data/Managed/Assembly-CSharp.dll";
+                await OpenSettings();
+                return;
+            }
+
             _allItems = await Task.Run(() => _modParserService.ScanModFolder(selectedPath));
 
             if (_allItems.Count == 0)
             {
-                LogOutput = "未找到有效的 XML 语言文件或 Defs 文件。";
+                LogOutput = "未找到有效的翻译数据。\n";
+                LogOutput += "可能的原因：\n";
+                LogOutput += "1. Mod 目录下没有 Assemblies 文件夹\n";
+                LogOutput += "2. Assembly-CSharp.dll 路径配置不正确\n";
+                LogOutput += "3. Mod DLL 文件无法加载";
                 return;
             }
 
