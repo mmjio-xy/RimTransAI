@@ -1,0 +1,17 @@
+<?xml version="1.0" encoding="utf-8"?>
+<Defs>
+  <ThingDef>
+    <defName>TestWeapon</defName>
+    <label>test weapon</label>
+    <description>A weapon for testing purposes.</description>
+  </ThingDef>
+
+  <ThingDef>
+    <defName>TestArmor</defName>
+    <label>test armor</label>
+    <description>An armor for testing purposes.</description>
+    <graphicData>
+      <texPath>Things/Armor/Test</texPath>
+    </graphicData>
+  </ThingDef>
+</Defs>

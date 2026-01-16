@@ -1,0 +1,9 @@
+{
+  "ApiUrl": "https://api.test.com/v1/chat/completions",
+  "ApiKey": "test-key",
+  "TargetModel": "test-model",
+  "TargetLanguage": "ChineseSimplified",
+  "AppTheme": "Light",
+  "AssemblyCSharpPath": "",
+  "DebugMode": false
+}
