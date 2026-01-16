@@ -9,3 +9,8 @@ Properties/
 .claude/
 *.rsuser
 *.user
+**/Assets/*.dll
+**/Assets/*.json
+**/RimTransAI/**.md
+**/RimTransAI/**/*.md
+**/.ccjk/

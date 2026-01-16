@@ -9,4 +9,5 @@ public class AppConfig
     public string TargetLanguage { get; set; } = "ChineseSimplified"; // 默认简中
     public string AppTheme { get; set; } = "Light";
     public string AssemblyCSharpPath { get; set; } = ""; // Assembly-CSharp.dll 路径
+    public bool DebugMode { get; set; } = false; // 调试模式开关
 }

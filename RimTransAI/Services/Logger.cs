@@ -5,6 +5,17 @@ using System.Text;
 namespace RimTransAI.Services;
 
 /// <summary>
+/// 日志级别枚举
+/// </summary>
+public enum LogLevel
+{
+    Debug = 0,
+    Info = 1,
+    Warning = 2,
+    Error = 3
+}
+
+/// <summary>
 /// 简单的日志服务，将日志写入文件
 /// </summary>
 public class Logger
@@ -12,6 +23,16 @@ public class Logger
     private static readonly object _lock = new object();
     private static string? _logFilePath;
     private static bool _isInitialized = false;
+    private static LogLevel _minimumLevel = LogLevel.Info;
+
+    /// <summary>
+    /// 设置调试模式
+    /// </summary>
+    public static void SetDebugMode(bool enabled)
+    {
+        _minimumLevel = enabled ? LogLevel.Debug : LogLevel.Info;
+        Info($"调试模式已{(enabled ? "开启" : "关闭")}，最小日志级别: {_minimumLevel}");
+    }
 
     /// <summary>
     /// 初始化日志服务
@@ -52,7 +73,7 @@ public class Logger
     /// </summary>
     public static void Info(string message)
     {
-        WriteLog("INFO", message);
+        WriteLog(LogLevel.Info, "INFO", message);
     }
 
     /// <summary>
@@ -60,7 +81,7 @@ public class Logger
     /// </summary>
     public static void Warning(string message)
     {
-        WriteLog("WARN", message);
+        WriteLog(LogLevel.Warning, "WARN", message);
     }
 
     /// <summary>
@@ -68,7 +89,7 @@ public class Logger
     /// </summary>
     public static void Error(string message)
     {
-        WriteLog("ERROR", message);
+        WriteLog(LogLevel.Error, "ERROR", message);
     }
 
     /// <summary>
@@ -88,7 +109,7 @@ public class Logger
             sb.AppendLine($"内部堆栈: {ex.InnerException.StackTrace}");
         }
 
-        WriteLog("ERROR", sb.ToString());
+        WriteLog(LogLevel.Error, "ERROR", sb.ToString());
     }
 
     /// <summary>
@@ -96,17 +117,20 @@ public class Logger
     /// </summary>
     public static void Debug(string message)
     {
-        WriteLog("DEBUG", message);
+        WriteLog(LogLevel.Debug, "DEBUG", message);
     }
 
     /// <summary>
     /// 核心写入方法
     /// </summary>
-    private static void WriteLog(string level, string message)
+    private static void WriteLog(LogLevel level, string levelStr, string message)
     {
+        // 日志级别过滤
+        if (level < _minimumLevel) return;
+
         if (!_isInitialized || string.IsNullOrEmpty(_logFilePath))
         {
-            Console.WriteLine($"[{level}] {message}");
+            Console.WriteLine($"[{levelStr}] {message}");
             return;
         }
 
@@ -115,7 +139,7 @@ public class Logger
             lock (_lock)
             {
                 string timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
-                string logLine = $"[{timestamp}] [{level}] {message}";
+                string logLine = $"[{timestamp}] [{levelStr}] {message}";
 
                 // 同时输出到控制台和文件
                 Console.WriteLine(logLine);

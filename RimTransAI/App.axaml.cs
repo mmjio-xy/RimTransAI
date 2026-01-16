@@ -56,7 +56,10 @@ public partial class App : Application
             SetTheme(configService.CurrentConfig.AppTheme);
             Logger.Info($"应用主题: {configService.CurrentConfig.AppTheme}");
 
-            // 3. 启动主窗口
+            // 3. 应用调试模式设置
+            Logger.SetDebugMode(configService.CurrentConfig.DebugMode);
+
+            // 4. 启动主窗口
             if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
             {
                 // 移除 Avalonia 自带的数据验证，避免重复验证

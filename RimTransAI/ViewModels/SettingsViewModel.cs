@@ -27,6 +27,9 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty] private int _selectedThemeIndex = 0;
     [ObservableProperty] private string _targetModel = string.Empty;
 
+    // 调试模式开关
+    [ObservableProperty] private bool _debugMode = false;
+
     // 设计时构造函数
     public SettingsViewModel()
     {
@@ -57,6 +60,9 @@ public partial class SettingsViewModel : ViewModelBase
         // === 加载主题设置 ===
         // 如果配置是 Dark，索引设为 1，否则设为 0
         SelectedThemeIndex = cfg.AppTheme == "Dark" ? 1 : 0;
+
+        // 加载调试模式设置
+        DebugMode = cfg.DebugMode;
     }
 
     [RelayCommand]
@@ -72,7 +78,8 @@ public partial class SettingsViewModel : ViewModelBase
             TargetModel = TargetModel,
             TargetLanguage = SelectedLanguageIndex == 1 ? "ChineseTraditional" : "ChineseSimplified",
             AppTheme = newTheme,
-            AssemblyCSharpPath = AssemblyCSharpPath
+            AssemblyCSharpPath = AssemblyCSharpPath,
+            DebugMode = DebugMode
         };
 
         // 保存到磁盘
@@ -80,6 +87,9 @@ public partial class SettingsViewModel : ViewModelBase
 
         // 4. === 立即应用主题 ===
         App.SetTheme(newTheme);
+
+        // 5. === 立即应用调试模式 ===
+        Logger.SetDebugMode(DebugMode);
 
         // 关闭窗口
         CurrentWindow?.Close();
