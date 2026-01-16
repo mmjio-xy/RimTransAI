@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -25,12 +26,16 @@ public partial class MainWindowViewModel : ViewModelBase
     private readonly FileGeneratorService _fileGeneratorService;
     private readonly LlmService _llmService;
     private readonly ModParserService _modParserService;
+    private readonly BatchingService _batchingService; // 智能分批服务
 
     // 1. 数据源：存放扫描到的所有原始数据
     private List<TranslationItem> _allItems = new();
 
     // 内部状态：记录当前 Mod 路径
     private string _currentModPath = string.Empty;
+
+    // 翻译取消令牌源
+    private CancellationTokenSource? _translationCts;
 
     [ObservableProperty] private bool _isTranslating = false;
 
@@ -57,6 +62,7 @@ public partial class MainWindowViewModel : ViewModelBase
         _modParserService = new ModParserService(reflectionAnalyzer, _configService);
         _llmService = new LlmService();
         _fileGeneratorService = new FileGeneratorService();
+        _batchingService = new BatchingService();
 
         // 初始化版本列表，避免设计器报错
         AvailableVersions.Add("全部");
@@ -67,12 +73,14 @@ public partial class MainWindowViewModel : ViewModelBase
         ModParserService modParserService,
         LlmService llmService,
         FileGeneratorService fileGeneratorService,
-        ConfigService configService)
+        ConfigService configService,
+        BatchingService batchingService)
     {
         _modParserService = modParserService;
         _llmService = llmService;
         _fileGeneratorService = fileGeneratorService;
         _configService = configService;
+        _batchingService = batchingService;
     }
 
     // 2. 视图源：绑定到 DataGrid
@@ -265,6 +273,11 @@ public partial class MainWindowViewModel : ViewModelBase
         IsTranslating = true;
         ProgressValue = 0;
 
+        // 创建新的取消令牌
+        _translationCts?.Dispose();
+        _translationCts = new CancellationTokenSource();
+        var cancellationToken = _translationCts.Token;
+
         // 1. 获取当前视图中所有需要翻译的条目
         // (不管是“未翻译”还是“已翻译”想重翻，都包含在内)
         var allItems = TranslationItems.ToList();
@@ -283,25 +296,40 @@ public partial class MainWindowViewModel : ViewModelBase
         LogOutput = $"开始翻译：共 {totalItems} 条目，去重后需翻译 {totalGroups} 条文本...";
         LogOutput += $"\n模型: {config.TargetModel} | 目标: {config.TargetLanguage}";
 
-        // 批处理大小 (按唯一文本计算)
-        int batchSize = 20;
-        var chunks = distinctGroups.Chunk(batchSize).ToList();
+        // 使用智能分批服务
+        var batchResult = _batchingService.CreateBatches(
+            distinctGroups,
+            config.MaxTokensPerBatch,
+            config.MinItemsPerBatch,
+            config.MaxItemsPerBatch
+        );
+
+        var batches = batchResult.Batches;
+        int totalBatches = batchResult.TotalBatches;
+
+        // 日志输出分批统计
+        LogOutput += $"\n智能分批: {totalBatches} 批次";
+        if (batchResult.OversizedBatches > 0)
+            LogOutput += $" (含 {batchResult.OversizedBatches} 个超长文本单独处理)";
 
         try
         {
-            for (int i = 0; i < chunks.Count; i++)
+            for (int i = 0; i < batches.Count; i++)
             {
-                var chunk = chunks[i];
+                // 检查是否请求取消
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    LogOutput += $"\n翻译已停止，完成 {i}/{totalBatches} 批次";
+                    break;
+                }
+
+                var batch = batches[i];
+                int batchTokens = batchResult.BatchTokenCounts[i];
 
                 // 3. 构建发送给 AI 的字典
-                // 字典 Key 用原文的 Hash 或第一条目的 Key 都可以，这里为了方便回填，
-                // 我们直接把“原文”当作字典的 Key 发给 AI (AI 返回时也用原文对应)
-                // 但 LlmService 目前设计是 Key->Text。
-                // 为了兼容 LlmService 逻辑，我们选取每组的第一个 Item 的 Key 作为代表。
-
-                var batchDict = chunk.ToDictionary(
-                    group => group.First().Key, // 代表 Key
-                    group => group.Key // 原文 (group.Key 就是 OriginalText)
+                var batchDict = batch.ToDictionary(
+                    group => group.Key,
+                    group => group.Key
                 );
 
                 try
@@ -316,13 +344,13 @@ public partial class MainWindowViewModel : ViewModelBase
                     );
 
                     // 4. 结果回填 (关键步骤)
-                    foreach (var group in chunk)
+                    foreach (var group in batch)
                     {
-                        // 找到这组数据的“代表 Key”
-                        var representativeKey = group.First().Key;
+                        // 使用原文作为 Key 查找翻译结果
+                        var originalText = group.Key;
 
                         // 检查 AI 是否返回了翻译
-                        if (results.TryGetValue(representativeKey, out string? translatedText) &&
+                        if (results.TryGetValue(originalText, out string? translatedText) &&
                             !string.IsNullOrWhiteSpace(translatedText))
                         {
                             // 广播：把翻译结果赋给该组下的【所有】条目
@@ -348,24 +376,28 @@ public partial class MainWindowViewModel : ViewModelBase
                 {
                     LogOutput += $"\n批次 {i + 1} 失败: {ex.Message}";
                     // 标记该批次所有条目为出错
-                    foreach (var group in chunk)
+                    foreach (var group in batch)
                     {
                         foreach (var item in group) item.Status = "出错";
                     }
                 }
 
-                processedGroups += chunk.Length;
+                processedGroups += batch.Count;
                 // 累加本批次覆盖的条目数
-                coveredItems += chunk.Sum(g => g.Count());
+                coveredItems += batch.Sum(g => g.Count());
 
                 // 进度条按"处理的唯一文本组数"计算
                 ProgressValue = (double)processedGroups / totalGroups * 100;
 
-                // 日志显示优化 - 使用累加器而不是重复计算
-                LogOutput = $"翻译进度: {processedGroups}/{totalGroups} (覆盖 {coveredItems}/{totalItems} 条)";
+                // 日志显示优化 - 显示批次和 Token 信息
+                LogOutput = $"翻译进度: {i + 1}/{totalBatches} 批次 | {processedGroups}/{totalGroups} 文本 (~{batchTokens} tokens)";
             }
 
-            LogOutput += "\n翻译任务全部完成！";
+            // 区分正常完成和取消完成
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                LogOutput += "\n翻译任务全部完成！";
+            }
         }
         catch (Exception ex)
         {
@@ -374,7 +406,22 @@ public partial class MainWindowViewModel : ViewModelBase
         finally
         {
             IsTranslating = false;
+            _translationCts?.Dispose();
+            _translationCts = null;
         }
+    }
+
+    /// <summary>
+    /// 停止翻译
+    /// </summary>
+    [RelayCommand]
+    private void StopTranslation()
+    {
+        if (_translationCts == null || _translationCts.IsCancellationRequested)
+            return;
+
+        _translationCts.Cancel();
+        LogOutput += "\n正在停止翻译...";
     }
 
     /// <summary>

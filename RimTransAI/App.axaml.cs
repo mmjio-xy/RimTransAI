@@ -45,6 +45,7 @@ public partial class App : Application
             collection.AddSingleton<ModParserService>();
             collection.AddSingleton<LlmService>();
             collection.AddSingleton<FileGeneratorService>();
+            collection.AddSingleton<BatchingService>(); // 智能分批服务
             // 注册配置服务
             collection.AddSingleton<ConfigService>();
 
