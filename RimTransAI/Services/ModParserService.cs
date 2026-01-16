@@ -64,11 +64,11 @@ public class ModParserService
         Logger.Info($"类型定义加载完成，找到 {_reflectionMap.Count} 个可翻译类型");
 
         // 第二步：创建翻译提取器
-        Logger.Info("步骤 2/3: 创建翻译提取器...");
+        Logger.Info("步骤 2/4: 创建翻译提取器...");
         var extractor = new TranslationExtractor(_reflectionMap);
 
         // 第三步：扫描并解析 XML 文件（模拟 RimWorld 加载 Defs）
-        Logger.Info("步骤 3/3: 扫描 XML 文件...");
+        Logger.Info("步骤 3/4: 扫描 Defs XML 文件...");
         var xmlFiles = Directory.GetFiles(modPath, "*.xml", SearchOption.AllDirectories);
         Logger.Info($"找到 {xmlFiles.Length} 个 XML 文件");
 
@@ -123,11 +123,18 @@ public class ModParserService
             }
         }
 
+        Logger.Info($"Defs 扫描完成: 处理 {processedFiles} 个，跳过 {skippedFiles} 个");
+
+        // 第四步：扫描 Keyed 文件
+        Logger.Info("步骤 4/4: 扫描 Keyed 文件...");
+        var keyedItems = ScanKeyedFiles(modPath);
+        items.AddRange(keyedItems);
+
         Logger.Info("========================================");
         Logger.Info("扫描完成");
-        Logger.Info($"处理文件: {processedFiles} 个");
-        Logger.Info($"跳过文件: {skippedFiles} 个");
-        Logger.Info($"提取翻译项: {items.Count} 个");
+        Logger.Info($"Defs 翻译项: {items.Count - keyedItems.Count} 个");
+        Logger.Info($"Keyed 翻译项: {keyedItems.Count} 个");
+        Logger.Info($"总计: {items.Count} 个");
         Logger.Info("========================================");
 
         return items;
@@ -374,5 +381,128 @@ public class ModParserService
             Logger.Error($"扫描 Mod 程序集时出错", ex);
             return null;
         }
+    }
+
+    /// <summary>
+    /// 扫描 Keyed 文件目录
+    /// </summary>
+    private List<TranslationItem> ScanKeyedFiles(string modPath)
+    {
+        var items = new List<TranslationItem>();
+        var keyedDirs = new List<(string path, string version)>();
+
+        // 1. 检查根目录下的 Languages/English/Keyed
+        var rootKeyedDir = Path.Combine(modPath, "Languages", "English", "Keyed");
+        if (Directory.Exists(rootKeyedDir))
+        {
+            keyedDirs.Add((rootKeyedDir, ""));
+        }
+
+        // 2. 检查版本目录下的 Languages/English/Keyed
+        var versionDirs = Directory.GetDirectories(modPath, "*", SearchOption.TopDirectoryOnly);
+        foreach (var versionDir in versionDirs)
+        {
+            var dirName = Path.GetFileName(versionDir);
+            if (VersionDirRegex.IsMatch(dirName) ||
+                dirName.Equals("Common", StringComparison.OrdinalIgnoreCase))
+            {
+                var versionKeyedDir = Path.Combine(versionDir, "Languages", "English", "Keyed");
+                if (Directory.Exists(versionKeyedDir))
+                {
+                    keyedDirs.Add((versionKeyedDir, dirName));
+                }
+            }
+        }
+
+        if (keyedDirs.Count == 0)
+        {
+            Logger.Info("未找到 Keyed 目录");
+            return items;
+        }
+
+        Logger.Info($"找到 {keyedDirs.Count} 个 Keyed 目录");
+
+        // 3. 解析每个目录下的 XML 文件
+        int processedFiles = 0;
+        foreach (var (keyedDir, version) in keyedDirs)
+        {
+            var xmlFiles = Directory.GetFiles(keyedDir, "*.xml", SearchOption.AllDirectories);
+            foreach (var file in xmlFiles)
+            {
+                var fileItems = ParseKeyedFile(file, version);
+                items.AddRange(fileItems);
+                if (fileItems.Count > 0) processedFiles++;
+            }
+        }
+
+        Logger.Info($"Keyed 文件处理完成: {processedFiles} 个文件，{items.Count} 个翻译项");
+        return items;
+    }
+
+    /// <summary>
+    /// 解析单个 Keyed XML 文件
+    /// </summary>
+    private List<TranslationItem> ParseKeyedFile(string filePath, string version)
+    {
+        var items = new List<TranslationItem>();
+
+        try
+        {
+            var doc = XDocument.Load(filePath);
+            if (doc.Root == null) return items;
+
+            // 验证根元素是否为 LanguageData
+            if (doc.Root.Name.LocalName != "LanguageData")
+            {
+                Logger.Debug($"跳过非 LanguageData 文件: {Path.GetFileName(filePath)}");
+                return items;
+            }
+
+            foreach (var element in doc.Root.Elements())
+            {
+                // 黑名单过滤
+                if (IsKeyedElementFiltered(element)) continue;
+
+                string key = element.Name.LocalName;
+                string text = element.Value?.Trim() ?? "";
+
+                if (string.IsNullOrWhiteSpace(text)) continue;
+
+                items.Add(new TranslationItem
+                {
+                    Key = key,
+                    DefType = "Keyed",
+                    OriginalText = text,
+                    TranslatedText = "",
+                    Status = "未翻译",
+                    FilePath = filePath,
+                    Version = version
+                });
+            }
+        }
+        catch (XmlException ex)
+        {
+            Logger.Warning($"Keyed XML 格式错误 {Path.GetFileName(filePath)}: {ex.Message}");
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"解析 Keyed 文件出错 {Path.GetFileName(filePath)}", ex);
+        }
+
+        return items;
+    }
+
+    /// <summary>
+    /// 判断 Keyed 元素是否应被过滤
+    /// </summary>
+    private bool IsKeyedElementFiltered(XElement element)
+    {
+        // 跳过有子元素的节点（非叶子节点）
+        if (element.HasElements) return true;
+
+        // 跳过空内容
+        if (string.IsNullOrWhiteSpace(element.Value)) return true;
+
+        return false;
     }
 }
