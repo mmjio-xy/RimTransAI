@@ -55,7 +55,12 @@
                         <Separator Margin="0,5" />
 
                         <Button Content="2. 开始 AI 翻译" Command="{Binding StartTranslationCommand}"
+                                IsVisible="{Binding !IsTranslating}"
                                 Classes="Success" Theme="{DynamicResource SolidButton}" HorizontalAlignment="Stretch" />
+
+                        <Button Content="⏹ 停止翻译" Command="{Binding StopTranslationCommand}"
+                                IsVisible="{Binding IsTranslating}"
+                                Classes="Danger" Theme="{DynamicResource SolidButton}" HorizontalAlignment="Stretch" />
 
                         <Button Content="3. 保存汉化文件" Command="{Binding SaveFilesCommand}"
                                 Classes="Warning" Theme="{DynamicResource SolidButton}" HorizontalAlignment="Stretch" />

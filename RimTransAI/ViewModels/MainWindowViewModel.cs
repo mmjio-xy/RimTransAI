@@ -2,6 +2,7 @@
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
+using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -32,6 +33,9 @@ public partial class MainWindowViewModel : ViewModelBase
 
     // 内部状态：记录当前 Mod 路径
     private string _currentModPath = string.Empty;
+
+    // 翻译取消令牌源
+    private CancellationTokenSource? _translationCts;
 
     [ObservableProperty] private bool _isTranslating = false;
 
@@ -269,6 +273,11 @@ public partial class MainWindowViewModel : ViewModelBase
         IsTranslating = true;
         ProgressValue = 0;
 
+        // 创建新的取消令牌
+        _translationCts?.Dispose();
+        _translationCts = new CancellationTokenSource();
+        var cancellationToken = _translationCts.Token;
+
         // 1. 获取当前视图中所有需要翻译的条目
         // (不管是“未翻译”还是“已翻译”想重翻，都包含在内)
         var allItems = TranslationItems.ToList();
@@ -307,6 +316,13 @@ public partial class MainWindowViewModel : ViewModelBase
         {
             for (int i = 0; i < batches.Count; i++)
             {
+                // 检查是否请求取消
+                if (cancellationToken.IsCancellationRequested)
+                {
+                    LogOutput += $"\n翻译已停止，完成 {i}/{totalBatches} 批次";
+                    break;
+                }
+
                 var batch = batches[i];
                 int batchTokens = batchResult.BatchTokenCounts[i];
 
@@ -377,7 +393,11 @@ public partial class MainWindowViewModel : ViewModelBase
                 LogOutput = $"翻译进度: {i + 1}/{totalBatches} 批次 | {processedGroups}/{totalGroups} 文本 (~{batchTokens} tokens)";
             }
 
-            LogOutput += "\n翻译任务全部完成！";
+            // 区分正常完成和取消完成
+            if (!cancellationToken.IsCancellationRequested)
+            {
+                LogOutput += "\n翻译任务全部完成！";
+            }
         }
         catch (Exception ex)
         {
@@ -386,7 +406,22 @@ public partial class MainWindowViewModel : ViewModelBase
         finally
         {
             IsTranslating = false;
+            _translationCts?.Dispose();
+            _translationCts = null;
         }
+    }
+
+    /// <summary>
+    /// 停止翻译
+    /// </summary>
+    [RelayCommand]
+    private void StopTranslation()
+    {
+        if (_translationCts == null || _translationCts.IsCancellationRequested)
+            return;
+
+        _translationCts.Cancel();
+        LogOutput += "\n正在停止翻译...";
     }
 
     /// <summary>
