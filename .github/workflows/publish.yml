@@ -1,4 +1,4 @@
-name: Windows Native AOT Release
+name: Release
 
 on:
   push:
@@ -10,9 +10,34 @@ permissions:
   contents: write
 
 jobs:
-  build-windows:
-    name: Build Windows Native AOT
+  # Job 1: 运行测试
+  test:
+    name: Run Tests
     runs-on: windows-latest
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup .NET 9
+        uses: actions/setup-dotnet@v4
+        with:
+          dotnet-version: 9.0.x
+
+      - name: Restore dependencies
+        run: dotnet restore
+
+      - name: Build
+        run: dotnet build --no-restore -c Release
+
+      - name: Run tests
+        run: dotnet test --no-build -c Release --verbosity normal
+
+  # Job 2: 构建和发布（依赖测试成功）
+  build-and-release:
+    name: Build and Release
+    runs-on: windows-latest
+    needs: test
 
     steps:
       - name: Checkout code

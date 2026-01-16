@@ -23,7 +23,6 @@
 
   <ItemGroup>
     <AvaloniaResource Include="Assets\**" />
-    <AvaloniaResource Include="bin\x64\Debug\net9.0\settings.json" />
   </ItemGroup>
 
   <ItemGroup>
