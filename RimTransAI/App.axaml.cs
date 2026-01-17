@@ -48,6 +48,8 @@ public partial class App : Application
             collection.AddSingleton<BatchingService>(); // 智能分批服务
             // 注册配置服务
             collection.AddSingleton<ConfigService>();
+            // 注册 Mod 信息服务
+            collection.AddSingleton<ModInfoService>();
 
             Services = collection.BuildServiceProvider();
             Logger.Info("依赖注入配置完成");
