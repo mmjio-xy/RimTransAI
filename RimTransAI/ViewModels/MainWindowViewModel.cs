@@ -27,6 +27,7 @@ public partial class MainWindowViewModel : ViewModelBase
     private readonly LlmService _llmService;
     private readonly ModParserService _modParserService;
     private readonly BatchingService _batchingService; // 智能分批服务
+    private readonly ModInfoService _modInfoService; // Mod 信息服务
 
     // 1. 数据源：存放扫描到的所有原始数据
     private List<TranslationItem> _allItems = new();
@@ -49,6 +50,20 @@ public partial class MainWindowViewModel : ViewModelBase
     // 4. UI 绑定属性
     [ObservableProperty] private string _selectedVersion = "全部";
 
+    // Mod 信息面板相关
+    [ObservableProperty] private bool _isModInfoPanelVisible = false;
+    [ObservableProperty] private ModInfoViewModel? _modInfoViewModel;
+
+    partial void OnIsModInfoPanelVisibleChanged(bool value)
+    {
+        OnPropertyChanged(nameof(CanShowExpandButton));
+    }
+
+    partial void OnModInfoViewModelChanged(ModInfoViewModel? value)
+    {
+        OnPropertyChanged(nameof(CanShowExpandButton));
+    }
+
     // =========================================================
     // 构造函数
     // =========================================================
@@ -63,6 +78,7 @@ public partial class MainWindowViewModel : ViewModelBase
         _llmService = new LlmService();
         _fileGeneratorService = new FileGeneratorService();
         _batchingService = new BatchingService();
+        _modInfoService = new ModInfoService();
 
         // 初始化版本列表，避免设计器报错
         AvailableVersions.Add("全部");
@@ -74,13 +90,15 @@ public partial class MainWindowViewModel : ViewModelBase
         LlmService llmService,
         FileGeneratorService fileGeneratorService,
         ConfigService configService,
-        BatchingService batchingService)
+        BatchingService batchingService,
+        ModInfoService modInfoService)
     {
         _modParserService = modParserService;
         _llmService = llmService;
         _fileGeneratorService = fileGeneratorService;
         _configService = configService;
         _batchingService = batchingService;
+        _modInfoService = modInfoService;
     }
 
     // 2. 视图源：绑定到 DataGrid
@@ -184,6 +202,9 @@ public partial class MainWindowViewModel : ViewModelBase
             ApplyFilter();
 
             LogOutput = $"扫描完成！共找到 {_allItems.Count} 条数据。";
+
+            // 加载 Mod 信息并显示面板
+            LoadModInfo(selectedPath);
         }
         catch (Exception ex)
         {
@@ -448,4 +469,56 @@ public partial class MainWindowViewModel : ViewModelBase
             LogOutput = $"保存失败: {ex.Message}";
         }
     }
+
+    /// <summary>
+    /// 加载 Mod 信息并显示浮动面板
+    /// </summary>
+    private void LoadModInfo(string modFolderPath)
+    {
+        try
+        {
+            var modInfo = _modInfoService.LoadModInfo(modFolderPath);
+            if (modInfo != null)
+            {
+                // 创建 ModInfoViewModel 并加载数据
+                ModInfoViewModel = new ModInfoViewModel();
+                ModInfoViewModel.LoadFromModInfo(modInfo);
+
+                // 显示浮动面板
+                IsModInfoPanelVisible = true;
+
+                Logger.Info($"Mod 信息面板已打开: {modInfo.Name}");
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.Warning($"加载 Mod 信息失败: {ex.Message}");
+        }
+    }
+
+    /// <summary>
+    /// 关闭 Mod 信息面板
+    /// </summary>
+    [RelayCommand]
+    private void CloseModInfoPanel()
+    {
+        IsModInfoPanelVisible = false;
+    }
+
+    /// <summary>
+    /// 打开 Mod 信息面板
+    /// </summary>
+    [RelayCommand]
+    private void OpenModInfoPanel()
+    {
+        if (ModInfoViewModel != null)
+        {
+            IsModInfoPanelVisible = true;
+        }
+    }
+
+    /// <summary>
+    /// 是否可以显示"展开"按钮（已加载 Mod 信息且面板已关闭）
+    /// </summary>
+    public bool CanShowExpandButton => ModInfoViewModel != null && !IsModInfoPanelVisible;
 }
