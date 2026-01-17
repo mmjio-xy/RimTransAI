@@ -36,6 +36,7 @@
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.0" />
     <PackageReference Include="SkiaSharp.NativeAssets.Win32" Version="2.88.9" />
+    <PackageReference Include="Material.Icons.Avalonia" Version="2.1.10" />
   </ItemGroup>
 
   <!-- 裁剪保护配置 -->
@@ -44,5 +45,6 @@
     <TrimmerRootAssembly Include="Semi.Avalonia" />
     <TrimmerRootAssembly Include="Semi.Avalonia.DataGrid" />
     <TrimmerRootAssembly Include="SkiaSharp" />
+    <TrimmerRootAssembly Include="Material.Icons.Avalonia" />
   </ItemGroup>
 </Project>
