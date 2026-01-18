@@ -97,18 +97,19 @@
 
             <DataGrid Grid.Column="1" Margin="10"
                       ItemsSource="{Binding TranslationItems}"
-                      IsReadOnly="True"
+                      IsReadOnly="False"
                       CanUserResizeColumns="True"
                       GridLinesVisibility="All"
                       BorderThickness="1"
                       BorderBrush="{DynamicResource SemiColorBorder}"
-                      Background="{DynamicResource SemiColorBackground0}">
+                      Background="{DynamicResource SemiColorBackground0}"
+                      CellEditEnding="OnCellEditEnding">
                 <DataGrid.Columns>
-                    <DataGridTextColumn Header="版本" Binding="{Binding Version}" Width="80" />
-                    <DataGridTextColumn Header="Key" Binding="{Binding Key}" Width="200" />
-                    <DataGridTextColumn Header="原文" Binding="{Binding OriginalText}" Width="3*" />
-                    <DataGridTextColumn Header="译文 (预览)" Binding="{Binding TranslatedText}" Width="3*" />
-                    <DataGridTextColumn Header="状态" Binding="{Binding Status}" Width="100" />
+                    <DataGridTextColumn Header="版本" Binding="{Binding Version}" Width="80" IsReadOnly="True" />
+                    <DataGridTextColumn Header="Key" Binding="{Binding Key}" Width="200" IsReadOnly="True" />
+                    <DataGridTextColumn Header="原文" Binding="{Binding OriginalText}" Width="3*" IsReadOnly="True" />
+                    <DataGridTextColumn Header="译文 (预览)" Binding="{Binding TranslatedText, Mode=TwoWay}" Width="3*" IsReadOnly="False" />
+                    <DataGridTextColumn Header="状态" Binding="{Binding Status}" Width="100" IsReadOnly="True" />
                 </DataGrid.Columns>
             </DataGrid>
         </Grid>
