@@ -1,4 +1,5 @@
-﻿using System.Threading.Tasks;
+﻿using System.Collections.Generic;
+using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Platform.Storage;
 using CommunityToolkit.Mvvm.ComponentModel;
@@ -29,6 +30,12 @@ public partial class SettingsViewModel : ViewModelBase
 
     // 调试模式开关
     [ObservableProperty] private bool _debugMode = false;
+
+    // 验证错误信息
+    [ObservableProperty] private string _validationError = string.Empty;
+
+    // 是否有验证错误
+    public bool HasValidationError => !string.IsNullOrEmpty(ValidationError);
 
     // 设计时构造函数
     public SettingsViewModel()
@@ -68,6 +75,32 @@ public partial class SettingsViewModel : ViewModelBase
     [RelayCommand]
     private void SaveAndClose()
     {
+        // 验证必填项
+        var errors = new List<string>();
+
+        if (string.IsNullOrWhiteSpace(AssemblyCSharpPath))
+            errors.Add("Assembly-CSharp.dll 路径");
+
+        if (string.IsNullOrWhiteSpace(ApiUrl))
+            errors.Add("API 地址");
+
+        if (string.IsNullOrWhiteSpace(ApiKey))
+            errors.Add("API Key");
+
+        if (string.IsNullOrWhiteSpace(TargetModel))
+            errors.Add("模型名称");
+
+        if (errors.Count > 0)
+        {
+            ValidationError = $"请填写必填项：{string.Join("、", errors)}";
+            OnPropertyChanged(nameof(HasValidationError));
+            return;
+        }
+
+        // 清除验证错误
+        ValidationError = string.Empty;
+        OnPropertyChanged(nameof(HasValidationError));
+
         // 1. 获取当前选中的主题字符串
         string newTheme = SelectedThemeIndex == 1 ? "Dark" : "Light";
         // 构建新配置对象

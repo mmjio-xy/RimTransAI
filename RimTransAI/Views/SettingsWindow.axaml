@@ -1,95 +1,169 @@
-﻿<Window xmlns="https://github.com/avaloniaui"
+<Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="using:RimTransAI.ViewModels"
-        mc:Ignorable="d" d:DesignWidth="500" d:DesignHeight="600"
+        xmlns:mi="using:Material.Icons.Avalonia"
+        mc:Ignorable="d" d:DesignWidth="520" d:DesignHeight="500"
         x:Class="RimTransAI.Views.SettingsWindow"
         x:DataType="vm:SettingsViewModel"
         Title="设置"
-        Width="500" 
-        SizeToContent="Height"
+        Width="520"
+        Height="500"
         WindowStartupLocation="CenterOwner"
-        CanResize="True"
+        CanResize="False"
         SystemDecorations="Full"
         ExtendClientAreaToDecorationsHint="True"
         Background="{DynamicResource SemiColorBackground0}">
 
-    <ScrollViewer VerticalScrollBarVisibility="Auto">
-        <Border Padding="25" Margin="0,30,0,0">
-            <StackPanel Spacing="20">
-                <TextBlock Text="参数设置" Classes="H4" Theme="{DynamicResource TitleTextBlock}"/>
-                
-                <StackPanel Spacing="8">
-                    <TextBlock Text="界面主题 (Theme)" Classes="Tertiary"/>
-                    <ComboBox SelectedIndex="{Binding SelectedThemeIndex}" HorizontalAlignment="Stretch">
-                        <ComboBoxItem>浅色模式 (Light)</ComboBoxItem>
-                        <ComboBoxItem>深色模式 (Dark)</ComboBoxItem>
-                    </ComboBox>
-                </StackPanel>
+    <Grid RowDefinitions="Auto, *, Auto" Margin="0,30,0,0">
+        <!-- 标题 -->
+        <TextBlock Grid.Row="0"
+                   Text="参数设置"
+                   Classes="H4"
+                   Theme="{DynamicResource TitleTextBlock}"
+                   Margin="25,15,25,10"/>
 
-                <StackPanel Spacing="8">
-                    <TextBlock Text="API 地址 (Base URL)" Classes="Tertiary"/>
-                    <TextBox Text="{Binding ApiUrl}" Watermark="例如: https://api.openai.com/v1/chat/completions"/>
-                    <TextBlock Text="* 提示: 使用 DeepSeek 时通常填 https://api.deepseek.com" 
-                               FontSize="12" Foreground="{DynamicResource SemiColorText3}"/>
-                </StackPanel>
+        <!-- TabControl 选项卡 -->
+        <TabControl Grid.Row="1" Margin="25,0,25,0">
 
-                <StackPanel Spacing="8">
-                    <TextBlock Text="API Key (令牌)" Classes="Tertiary"/>
-                    <TextBox Text="{Binding ApiKey}" PasswordChar="*" Watermark="sk-..." Classes="RevealPasswordButton"/>
-                </StackPanel>
-            
-                <StackPanel Spacing="8">
-                    <TextBlock Text="模型名称 (Model)" Classes="Tertiary"/>
-                    <TextBox Text="{Binding TargetModel}" Watermark="例如: gpt-3.5-turbo / deepseek-chat"/>
-                </StackPanel>
+            <!-- 基本设置选项卡 -->
+            <TabItem>
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <mi:MaterialIcon Kind="Cog" Width="18" Height="18"/>
+                        <TextBlock Text="基本设置" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </TabItem.Header>
 
-                <StackPanel Spacing="8">
-                    <TextBlock Text="目标语言" Classes="Tertiary"/>
-                    <ComboBox SelectedIndex="{Binding SelectedLanguageIndex}" HorizontalAlignment="Stretch">
-                        <ComboBoxItem>简体中文 (Simplified)</ComboBoxItem>
-                        <ComboBoxItem>繁体中文 (Traditional)</ComboBoxItem>
-                    </ComboBox>
-                </StackPanel>
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="5,15,5,5">
+                    <StackPanel Spacing="20">
 
-                <StackPanel Spacing="8">
-                    <TextBlock Text="Assembly-CSharp.dll 路径" Classes="Tertiary"/>
-                    <Grid ColumnDefinitions="*, Auto">
-                        <TextBox Grid.Column="0"
-                                 Text="{Binding AssemblyCSharpPath}"
-                                 Watermark="选择 Assembly-CSharp.dll 文件路径"
-                                 IsReadOnly="True"
-                                 Margin="0,0,10,0"/>
-                        <Button Grid.Column="1"
-                                Content="浏览..."
-                                Command="{Binding SelectAssemblyCSharpFileCommand}"
-                                Theme="{DynamicResource OutlineButton}"/>
-                    </Grid>
-                    <TextBlock Text="* 用于反射提取游戏内定义，提升翻译准确性"
-                               FontSize="12" Foreground="{DynamicResource SemiColorText3}"/>
-                </StackPanel>
+                        <!-- 界面主题 -->
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="界面主题 (Theme)" Classes="Tertiary"/>
+                            <ComboBox SelectedIndex="{Binding SelectedThemeIndex}" HorizontalAlignment="Stretch">
+                                <ComboBoxItem>浅色模式 (Light)</ComboBoxItem>
+                                <ComboBoxItem>深色模式 (Dark)</ComboBoxItem>
+                            </ComboBox>
+                        </StackPanel>
 
-                <StackPanel Spacing="8">
-                    <Grid ColumnDefinitions="*, Auto">
-                        <StackPanel Grid.Column="0">
-                            <TextBlock Text="调试模式 (Debug Mode)" Classes="Tertiary"/>
-                            <TextBlock Text="* 开启后将记录详细的调试日志，便于排查问题"
+                        <!-- 目标语言 -->
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="目标语言" Classes="Tertiary"/>
+                            <ComboBox SelectedIndex="{Binding SelectedLanguageIndex}" HorizontalAlignment="Stretch">
+                                <ComboBoxItem>简体中文 (Simplified)</ComboBoxItem>
+                                <ComboBoxItem>繁体中文 (Traditional)</ComboBoxItem>
+                            </ComboBox>
+                        </StackPanel>
+
+                        <!-- Assembly-CSharp.dll 路径（必填） -->
+                        <StackPanel Spacing="8">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="Assembly-CSharp.dll 路径" Classes="Tertiary"/>
+                                <TextBlock Text=" *" Foreground="#E53935" FontWeight="Bold"/>
+                            </StackPanel>
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBox Grid.Column="0"
+                                         Text="{Binding AssemblyCSharpPath}"
+                                         Watermark="选择 Assembly-CSharp.dll 文件路径"
+                                         IsReadOnly="True"
+                                         Margin="0,0,10,0"/>
+                                <Button Grid.Column="1"
+                                        Content="浏览..."
+                                        Command="{Binding SelectAssemblyCSharpFileCommand}"
+                                        Theme="{DynamicResource OutlineButton}"/>
+                            </Grid>
+                            <TextBlock Text="用于反射提取游戏内定义，提升翻译准确性"
                                        FontSize="12" Foreground="{DynamicResource SemiColorText3}"/>
                         </StackPanel>
-                        <ToggleSwitch Grid.Column="1"
-                                      IsChecked="{Binding DebugMode}"
-                                      VerticalAlignment="Center"/>
-                    </Grid>
-                </StackPanel>
 
-                <Separator Margin="0,10"/>
+                        <!-- 调试模式 -->
+                        <StackPanel Spacing="8">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="调试模式 (Debug Mode)" Classes="Tertiary"/>
+                                    <TextBlock Text="开启后将记录详细的调试日志，便于排查问题"
+                                               FontSize="12" Foreground="{DynamicResource SemiColorText3}"/>
+                                </StackPanel>
+                                <ToggleSwitch Grid.Column="1"
+                                              IsChecked="{Binding DebugMode}"
+                                              VerticalAlignment="Center"/>
+                            </Grid>
+                        </StackPanel>
 
-                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="15" Margin="0,0,0,10">
-                    <Button Content="取消" Command="{Binding CancelCommand}" Theme="{DynamicResource TertiaryButton}"/>
-                    <Button Content="保存配置" Command="{Binding SaveAndCloseCommand}" Theme="{DynamicResource SolidButton}" Classes="Primary"/>
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- API 设置选项卡 -->
+            <TabItem>
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal" Spacing="8">
+                        <mi:MaterialIcon Kind="Api" Width="18" Height="18"/>
+                        <TextBlock Text="API 设置" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </TabItem.Header>
+
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="5,15,5,5">
+                    <StackPanel Spacing="20">
+
+                        <!-- API 地址（必填） -->
+                        <StackPanel Spacing="8">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="API 地址 (Base URL)" Classes="Tertiary"/>
+                                <TextBlock Text=" *" Foreground="#E53935" FontWeight="Bold"/>
+                            </StackPanel>
+                            <TextBox Text="{Binding ApiUrl}" Watermark="例如: https://api.openai.com/v1/chat/completions"/>
+                            <TextBlock Text="提示: 使用 DeepSeek 时通常填 https://api.deepseek.com"
+                                       FontSize="12" Foreground="{DynamicResource SemiColorText3}"/>
+                        </StackPanel>
+
+                        <!-- API Key（必填） -->
+                        <StackPanel Spacing="8">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="API Key (令牌)" Classes="Tertiary"/>
+                                <TextBlock Text=" *" Foreground="#E53935" FontWeight="Bold"/>
+                            </StackPanel>
+                            <TextBox Text="{Binding ApiKey}" PasswordChar="*" Watermark="sk-..." Classes="RevealPasswordButton"/>
+                        </StackPanel>
+
+                        <!-- 模型名称（必填） -->
+                        <StackPanel Spacing="8">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="模型名称 (Model)" Classes="Tertiary"/>
+                                <TextBlock Text=" *" Foreground="#E53935" FontWeight="Bold"/>
+                            </StackPanel>
+                            <TextBox Text="{Binding TargetModel}" Watermark="例如: gpt-3.5-turbo / deepseek-chat"/>
+                        </StackPanel>
+
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+        </TabControl>
+
+        <!-- 底部按钮区域 -->
+        <Border Grid.Row="2" Padding="25,15,25,20">
+            <StackPanel>
+                <!-- 验证错误提示 -->
+                <TextBlock Text="{Binding ValidationError}"
+                           Foreground="#E53935"
+                           FontSize="13"
+                           Margin="0,0,0,10"
+                           TextWrapping="Wrap"
+                           IsVisible="{Binding HasValidationError}"/>
+
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="15">
+                    <Button Content="取消"
+                            Command="{Binding CancelCommand}"
+                            Theme="{DynamicResource TertiaryButton}"/>
+                    <Button Content="保存配置"
+                            Command="{Binding SaveAndCloseCommand}"
+                            Theme="{DynamicResource SolidButton}"
+                            Classes="Primary"/>
                 </StackPanel>
             </StackPanel>
         </Border>
-    </ScrollViewer>
+    </Grid>
 </Window>
