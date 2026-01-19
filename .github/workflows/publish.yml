@@ -2,7 +2,8 @@ name: Release
 
 on:
   push:
-    branches: [master]
+    tags:
+      - "v*"
   workflow_dispatch:
 
 permissions:
@@ -54,12 +55,12 @@ jobs:
       - name: Restore Dependencies
         run: dotnet restore ./RimTransAI/RimTransAI.csproj
 
-      - name: Generate Version
+      - name: Get Tag Version
         id: version
         shell: pwsh
         run: |
-          # 获取当前日期作为版本号 (格式: vYYYY.MM.DD)
-          $version = "v" + (Get-Date).ToString("yyyy.MM.dd")
+          # 从推送的 tag 中获取版本号
+          $version = "$env:GITHUB_REF_NAME"
           echo "version=$version" >> $env:GITHUB_OUTPUT
 
       - name: Generate Changelog
@@ -99,13 +100,6 @@ jobs:
           path: ./publish/*
           retention-days: 5
 
-      - name: Create Tag
-        run: |
-          git config user.name "github-actions[bot]"
-          git config user.email "github-actions[bot]@users.noreply.github.com"
-          git tag ${{ steps.version.outputs.version }}
-          git push origin ${{ steps.version.outputs.version }}
-
       - name: Create Release
         uses: softprops/action-gh-release@v1
         with:
@@ -113,7 +107,6 @@ jobs:
           draft: false
           prerelease: false
           body_path: changelog.txt
-          tag_name: ${{ steps.version.outputs.version }}
           name: RimTransAI ${{ steps.version.outputs.version }}
           generate_release_notes: false
           token: ${{ secrets.GITHUB_TOKEN }}
