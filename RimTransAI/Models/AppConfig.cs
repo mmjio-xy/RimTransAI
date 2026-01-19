@@ -1,4 +1,4 @@
-﻿namespace RimTransAI.Models;
+namespace RimTransAI.Models;
 
 public class AppConfig
 {
@@ -15,4 +15,9 @@ public class AppConfig
     public int MaxTokensPerBatch { get; set; } = 3000;  // 每批次最大 Token 数
     public int MinItemsPerBatch { get; set; } = 5;      // 每批次最少条目数
     public int MaxItemsPerBatch { get; set; } = 50;     // 每批次最多条目数
+
+    // 提示词配置
+    public string CustomPrompt { get; set; } = "";         // 自定义提示词
+    public bool UseCustomPrompt { get; set; } = false;     // 是否使用自定义提示词
+    public string PromptTemplateName { get; set; } = "Default"; // 预设模板名称
 }

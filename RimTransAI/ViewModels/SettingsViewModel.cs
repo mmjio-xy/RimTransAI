@@ -1,4 +1,4 @@
-﻿using System.Collections.Generic;
+using System.Collections.Generic;
 using System.Threading.Tasks;
 using Avalonia.Controls;
 using Avalonia.Platform.Storage;
@@ -31,11 +31,43 @@ public partial class SettingsViewModel : ViewModelBase
     // 调试模式开关
     [ObservableProperty] private bool _debugMode = false;
 
+    // 提示词设置
+    [ObservableProperty] private bool _useCustomPrompt = false;
+    [ObservableProperty] private string _customPrompt = string.Empty;
+    [ObservableProperty] private int _selectedTemplateIndex = 0;
+
     // 验证错误信息
     [ObservableProperty] private string _validationError = string.Empty;
 
     // 是否有验证错误
     public bool HasValidationError => !string.IsNullOrEmpty(ValidationError);
+
+    // 预设模板
+    private readonly Dictionary<int, string> _promptTemplates = new()
+    {
+        { 0, "You are a professional translator for RimWorld. Target: {targetLang}. Rules: Preserve XML tags, variables like {{0}}, and paths. Input/Output is JSON." },
+        { 1, "You are a professional RimWorld translator specializing in sci-fi content. Target: {targetLang}. Maintain futuristic and technical terminology. Rules: Preserve XML tags, variables, paths. Input/Output is JSON." },
+        { 2, "You are a professional RimWorld translator specializing in fantasy content. Target: {targetLang}. Use mystical and archaic language where appropriate. Rules: Preserve XML tags, variables, paths. Input/Output is JSON." },
+        { 3, "You are a professional RimWorld translator. Target: {targetLang}. Use formal, authoritative language. Rules: Preserve XML tags, variables, paths. Input/Output is JSON." }
+    };
+
+    // 预览属性（显示最终发送给 LLM 的提示词）
+    public string PreviewPrompt
+    {
+        get
+        {
+            string langDisplay = SelectedLanguageIndex == 1 ? "繁體中文" : "简体中文";
+
+            if (UseCustomPrompt && !string.IsNullOrWhiteSpace(CustomPrompt))
+            {
+                return CustomPrompt.Replace("{targetLang}", langDisplay);
+            }
+            else
+            {
+                return _promptTemplates[0].Replace("{targetLang}", langDisplay);
+            }
+        }
+    }
 
     // 设计时构造函数
     public SettingsViewModel()
@@ -54,6 +86,32 @@ public partial class SettingsViewModel : ViewModelBase
     // 这一行是为了能让 View 代码隐藏文件传 Window 进来关闭自己
     public Window? CurrentWindow { get; set; }
 
+    // 模板选择变化处理
+    partial void OnSelectedTemplateIndexChanged(int value)
+    {
+        if (value >= 0 && value < _promptTemplates.Count)
+        {
+            CustomPrompt = _promptTemplates[value];
+            UseCustomPrompt = true;
+        }
+    }
+
+    // 提示词相关属性变化时更新预览
+    partial void OnCustomPromptChanged(string value)
+    {
+        OnPropertyChanged(nameof(PreviewPrompt));
+    }
+
+    partial void OnUseCustomPromptChanged(bool value)
+    {
+        OnPropertyChanged(nameof(PreviewPrompt));
+    }
+
+    partial void OnSelectedLanguageIndexChanged(int value)
+    {
+        OnPropertyChanged(nameof(PreviewPrompt));
+    }
+
     private void LoadFromService()
     {
         var cfg = _configService.CurrentConfig;
@@ -70,6 +128,19 @@ public partial class SettingsViewModel : ViewModelBase
 
         // 加载调试模式设置
         DebugMode = cfg.DebugMode;
+
+        // 加载提示词配置
+        UseCustomPrompt = cfg.UseCustomPrompt;
+        CustomPrompt = cfg.CustomPrompt;
+
+        // 根据模板名称设置下拉框选择
+        SelectedTemplateIndex = cfg.PromptTemplateName switch
+        {
+            "SciFi" => 1,
+            "Fantasy" => 2,
+            "Formal" => 3,
+            _ => 0
+        };
     }
 
     [RelayCommand]
@@ -103,6 +174,16 @@ public partial class SettingsViewModel : ViewModelBase
 
         // 1. 获取当前选中的主题字符串
         string newTheme = SelectedThemeIndex == 1 ? "Dark" : "Light";
+        // 获取模板名称
+        string templateName = SelectedTemplateIndex switch
+        {
+            0 => "Default",
+            1 => "SciFi",
+            2 => "Fantasy",
+            3 => "Formal",
+            _ => "Default"
+        };
+
         // 构建新配置对象
         var newConfig = new AppConfig
         {
@@ -112,7 +193,10 @@ public partial class SettingsViewModel : ViewModelBase
             TargetLanguage = SelectedLanguageIndex == 1 ? "ChineseTraditional" : "ChineseSimplified",
             AppTheme = newTheme,
             AssemblyCSharpPath = AssemblyCSharpPath,
-            DebugMode = DebugMode
+            DebugMode = DebugMode,
+            CustomPrompt = CustomPrompt,
+            UseCustomPrompt = UseCustomPrompt,
+            PromptTemplateName = templateName
         };
 
         // 保存到磁盘

@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Net.Http;
 using System.Text;
@@ -43,13 +43,15 @@ public class LlmService : IDisposable
     /// <param name="apiKey">API Key</param>
     /// <param name="sourceTexts">Key: 原文ID, Value: 英文原文</param>
     /// <param name="targetLang">目标语言</param>
+    /// <param name="customPrompt">自定义提示词（可选，默认使用内置提示词）</param>
     /// <returns>Key: 原文ID, Value: 中文译文</returns>
     public async Task<Dictionary<string, string>> TranslateBatchAsync(
-    string apiKey, 
-    Dictionary<string, string> sourceTexts, 
-    string apiUrl, 
-    string model, 
-    string targetLang = "Simplified Chinese")
+    string apiKey,
+    Dictionary<string, string> sourceTexts,
+    string apiUrl,
+    string model,
+    string targetLang = "Simplified Chinese",
+    string? customPrompt = null)
 {
     if (sourceTexts.Count == 0) return new Dictionary<string, string>();
 
@@ -57,8 +59,11 @@ public class LlmService : IDisposable
     // 使用 Context 序列化字典
     var userContent = JsonSerializer.Serialize(sourceTexts, AppJsonContext.Default.DictionaryStringString);
 
-    var systemPrompt = $@"You are a professional translator for RimWorld. Target: {targetLang}. 
-Rules: Preserve XML tags, variables like {{0}}, and paths. Input/Output is JSON.";
+    // 提示词选择逻辑：自定义提示词优先
+    var systemPrompt = !string.IsNullOrWhiteSpace(customPrompt)
+        ? customPrompt.Replace("{targetLang}", targetLang)
+        : $@"You are a professional translator for RimWorld. Target: {targetLang}.
+ Rules: Preserve XML tags, variables like {{0}}, and paths. Input/Output is JSON.";
 
     // 2. 构造请求对象 (使用我们新建的 LlmRequest 类，替代匿名对象)
     var requestBodyObj = new LlmRequest

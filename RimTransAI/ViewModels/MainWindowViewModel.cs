@@ -1,4 +1,4 @@
-﻿using System;
+using System;
 using System.Collections.Generic;
 using System.Collections.ObjectModel;
 using System.Linq;
@@ -355,13 +355,14 @@ public partial class MainWindowViewModel : ViewModelBase
 
                 try
                 {
-                    // 调用 LLM
+                    // 调用 LLM（传递自定义提示词，如果启用）
                     var results = await _llmService.TranslateBatchAsync(
                         config.ApiKey,
                         batchDict,
                         config.ApiUrl,
                         config.TargetModel,
-                        config.TargetLanguage
+                        config.TargetLanguage,
+                        config.UseCustomPrompt && !string.IsNullOrWhiteSpace(config.CustomPrompt) ? config.CustomPrompt : null
                     );
 
                     // 4. 结果回填 (关键步骤)
