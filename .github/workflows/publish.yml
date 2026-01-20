@@ -67,16 +67,30 @@ jobs:
         id: changelog
         shell: pwsh
         run: |
-          # 获取自上一个标签以来的提交历史
-          $lastTag = $(git describe --tags --abbrev=0 2>$null)
-          if ($lastTag) {
-            $commits = $(git log $lastTag..HEAD --pretty=format:"- %s" --no-merges)
+          # 获取当前版本号
+          $currentTag = "$env:GITHUB_REF_NAME"
+
+          # 获取上一个标签（排除当前标签）
+          $previousTag = $(git describe --tags --abbrev=0 HEAD^ 2>$null)
+
+          # 生成 changelog 头部
+          $changelog = "## 🎉 $currentTag`n`n"
+
+          if ($previousTag) {
+            # 如果存在上一个标签，获取两个标签之间的提交
+            $changelog += "### 📝 自 $previousTag 以来的更改：`n`n"
+            $commits = git log $previousTag..$currentTag --pretty=format:"- %s" --no-merges
           } else {
-            $commits = $(git log --pretty=format:"- %s" --no-merges -n 20)
+            # 如果不存在上一个标签（首次发布），获取最近 20 条提交
+            $changelog += "### 📝 首次发布（最近 20 条提交）：`n`n"
+            $commits = git log --pretty=format:"- %s" --no-merges -n 20
           }
 
-          # 将提交列表写入临时文件
-          $commits | Out-File -Encoding UTF8 -FilePath changelog.txt
+          # 添加提交列表
+          $changelog += $commits
+
+          # 将 changelog 写入文件
+          $changelog | Out-File -Encoding UTF8 -FilePath changelog.txt
 
           # 输出 changelog 内容
           Get-Content changelog.txt
