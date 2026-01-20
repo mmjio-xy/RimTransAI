@@ -121,22 +121,22 @@ public class Logger
     }
 
     /// <summary>
-    /// 核心写入方法
+    /// 核心写入方法（线程安全）
     /// </summary>
     private static void WriteLog(LogLevel level, string levelStr, string message)
     {
-        // 日志级别过滤
-        if (level < _minimumLevel) return;
-
-        if (!_isInitialized || string.IsNullOrEmpty(_logFilePath))
+        lock (_lock)
         {
-            Console.WriteLine($"[{levelStr}] {message}");
-            return;
-        }
+            // 日志级别过滤（在锁内检查，避免多线程竞态）
+            if (level < _minimumLevel) return;
 
-        try
-        {
-            lock (_lock)
+            if (!_isInitialized || string.IsNullOrEmpty(_logFilePath))
+            {
+                Console.WriteLine($"[{levelStr}] {message}");
+                return;
+            }
+
+            try
             {
                 string timestamp = DateTime.Now.ToString("yyyy-MM-dd HH:mm:ss.fff");
                 string logLine = $"[{timestamp}] [{levelStr}] {message}";
@@ -145,10 +145,10 @@ public class Logger
                 Console.WriteLine(logLine);
                 File.AppendAllText(_logFilePath, logLine + Environment.NewLine, Encoding.UTF8);
             }
-        }
-        catch (Exception ex)
-        {
-            Console.WriteLine($"写入日志失败: {ex.Message}");
+            catch (Exception ex)
+            {
+                Console.WriteLine($"写入日志失败: {ex.Message}");
+            }
         }
     }
 

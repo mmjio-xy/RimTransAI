@@ -100,6 +100,79 @@
                 </ScrollViewer>
             </TabItem>
 
+            <!-- 多线程设置选项卡 -->
+            <TabItem>
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Path Data="M12,2A10,10 0 0,1 22,12A10,10 0 0,1 12,22A10,10 0 0,1 2,12A10,10 0 0,1 12,2M12,4A8,8 0 0,0 4,12A8,8 0 0,0 12,20A8,8 0 0,0 20,12A8,8 0 0,0 12,4M12,6A6,6 0 0,1 18,12A6,6 0 0,1 12,18A6,6 0 0,1 6,12A6,6 0 0,1 12,6M12,8A4,4 0 0,0 8,12A4,4 0 0,0 12,16A4,4 0 0,0 16,12A4,4 0 0,0 12,8Z"
+                               Fill="{DynamicResource SemiColorText0}"
+                               Width="16"
+                               Height="16"
+                               Stretch="Uniform"
+                               VerticalAlignment="Center"/>
+                        <TextBlock Text="多线程设置" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </TabItem.Header>
+
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="5,15,5,5">
+                    <StackPanel Spacing="20">
+
+                        <!-- 启用多线程翻译 -->
+                        <StackPanel Spacing="8">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="启用多线程翻译" Classes="Tertiary"/>
+                                    <TextBlock Text="开启后将使用多线程并发处理翻译批次，提高翻译速度"
+                                               FontSize="12" Foreground="{DynamicResource SemiColorText3}"/>
+                                </StackPanel>
+                                <ToggleSwitch Grid.Column="1"
+                                              IsChecked="{Binding EnableMultiThreadTranslation}"
+                                              VerticalAlignment="Center"/>
+                            </Grid>
+                        </StackPanel>
+
+                        <!-- 最大线程数 -->
+                        <StackPanel Spacing="8" IsVisible="{Binding EnableMultiThreadTranslation}">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="最大线程数" Classes="Tertiary"/>
+                                <TextBlock Text=" (1-10)" FontSize="12" Foreground="{DynamicResource SemiColorText3}"/>
+                            </StackPanel>
+                            <NumericUpDown Value="{Binding MaxThreads}"
+                                          Minimum="1"
+                                          Maximum="10"
+                                          Increment="1"
+                                          FormatString="N0"
+                                          HorizontalAlignment="Left"
+                                          Width="120"/>
+                            <TextBlock Text="⚠️ 请勿设置过高，避免被 API 平台拒绝。建议：2-6 线程。"
+                                       FontSize="12"
+                                       Foreground="#F57C00"
+                                       Margin="0,5,0,0"/>
+                        </StackPanel>
+
+                        <!-- 请求间隔 -->
+                        <StackPanel Spacing="8" IsVisible="{Binding EnableMultiThreadTranslation}">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="请求间隔" Classes="Tertiary"/>
+                                <TextBlock Text=" (毫秒)" FontSize="12" Foreground="{DynamicResource SemiColorText3}"/>
+                            </StackPanel>
+                            <NumericUpDown Value="{Binding ThreadIntervalMs}"
+                                          Minimum="0"
+                                          Maximum="1000"
+                                          Increment="50"
+                                          FormatString="N0"
+                                          HorizontalAlignment="Left"
+                                          Width="120"/>
+                            <TextBlock Text="避免请求过于密集，0 表示无间隔。"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource SemiColorText3}"
+                                       Margin="0,5,0,0"/>
+                        </StackPanel>
+
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
             <!-- API 设置选项卡 -->
             <TabItem>
                 <TabItem.Header>

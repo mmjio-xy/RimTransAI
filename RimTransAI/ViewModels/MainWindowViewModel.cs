@@ -335,7 +335,24 @@ public partial class MainWindowViewModel : ViewModelBase
 
         try
         {
-            for (int i = 0; i < batches.Count; i++)
+            // 根据配置选择单线程或多线程翻译
+            if (config.EnableMultiThreadTranslation)
+            {
+                // 多线程翻译
+                await ExecuteMultiThreadTranslationAsync(
+                    batchResult,
+                    config,
+                    cancellationToken,
+                    totalBatches);
+
+                // 更新统计信息
+                processedGroups = totalGroups;
+                coveredItems = totalItems;
+            }
+            else
+            {
+                // 单线程翻译（原有逻辑）
+                for (int i = 0; i < batches.Count; i++)
             {
                 // 检查是否请求取消
                 if (cancellationToken.IsCancellationRequested)
@@ -414,6 +431,7 @@ public partial class MainWindowViewModel : ViewModelBase
                 // 日志显示优化 - 显示批次和 Token 信息
                 LogOutput = $"翻译进度: {i + 1}/{totalBatches} 批次 | {processedGroups}/{totalGroups} 文本 (~{batchTokens} tokens)";
             }
+            }
 
             // 区分正常完成和取消完成
             if (!cancellationToken.IsCancellationRequested)
@@ -444,6 +462,69 @@ public partial class MainWindowViewModel : ViewModelBase
 
         _translationCts.Cancel();
         LogOutput += "\n正在停止翻译...";
+    }
+
+    /// <summary>
+    /// 执行多线程翻译
+    /// </summary>
+    private async Task ExecuteMultiThreadTranslationAsync(
+        BatchingService.BatchResult batchResult,
+        AppConfig config,
+        CancellationToken cancellationToken,
+        int totalBatches)
+    {
+        // 创建并发控制器
+        using var concurrencyManager = new ConcurrencyManager(
+            config.MaxThreads,
+            config.ThreadIntervalMs);
+
+        // 创建进度报告器
+        int processedBatches = 0;
+        using var progressReporter = new ThreadSafeProgressReporter(
+            progress =>
+            {
+                processedBatches = progress.ProcessedBatches;
+                UpdateMultiThreadProgress(progress, totalBatches);
+            },
+            log => LogOutput += $"\n{log}");
+
+        // 创建多线程翻译服务
+        using var multiThreadService = new MultiThreadedTranslationService();
+
+        // 报告开始
+        progressReporter.ReportLog($"开始多线程翻译: {config.MaxThreads} 线程, {totalBatches} 批次");
+
+        try
+        {
+            // 执行多线程翻译
+            await multiThreadService.ExecuteBatchesAsync(
+                batchResult,
+                concurrencyManager,
+                progressReporter,
+                config.ApiKey,
+                config.ApiUrl,
+                config.TargetModel,
+                config.TargetLanguage,
+                config.UseCustomPrompt && !string.IsNullOrWhiteSpace(config.CustomPrompt) ? config.CustomPrompt : null,
+                cancellationToken);
+        }
+        catch (OperationCanceledException)
+        {
+            progressReporter.ReportLog("多线程翻译已取消");
+            throw;
+        }
+    }
+
+    /// <summary>
+    /// 更新多线程翻译进度
+    /// </summary>
+    private void UpdateMultiThreadProgress(TranslationProgress progress, int totalBatches)
+    {
+        // 更新进度条
+        ProgressValue = (double)progress.ProcessedBatches / progress.TotalBatches * 100;
+
+        // 更新日志显示
+        LogOutput = $"多线程翻译进度: {progress.ProcessedBatches}/{progress.TotalBatches} 批次 | 正在运行 {progress.ActiveThreads} 个线程";
     }
 
     /// <summary>

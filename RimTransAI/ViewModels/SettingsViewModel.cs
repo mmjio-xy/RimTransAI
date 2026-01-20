@@ -1,3 +1,4 @@
+using System;
 using System.Collections.Generic;
 using System.Threading.Tasks;
 using Avalonia.Controls;
@@ -38,6 +39,11 @@ public partial class SettingsViewModel : ViewModelBase
 
     // 是否使用默认提示词（用于避免 XAML 负向绑定）
     public bool UseDefaultPrompt => !UseCustomPrompt;
+
+    // 多线程翻译设置
+    [ObservableProperty] private bool _enableMultiThreadTranslation = false;
+    [ObservableProperty] private int _maxThreads = 4;
+    [ObservableProperty] private int _threadIntervalMs = 100;
 
     // 验证错误信息
     [ObservableProperty] private string _validationError = string.Empty;
@@ -145,6 +151,11 @@ public partial class SettingsViewModel : ViewModelBase
             "Formal" => 3,
             _ => 0
         };
+
+        // 加载多线程配置
+        EnableMultiThreadTranslation = cfg.EnableMultiThreadTranslation;
+        MaxThreads = Math.Clamp(cfg.MaxThreads, 1, 10);
+        ThreadIntervalMs = Math.Max(0, cfg.ThreadIntervalMs);
     }
 
     [RelayCommand]
@@ -200,7 +211,10 @@ public partial class SettingsViewModel : ViewModelBase
             DebugMode = DebugMode,
             CustomPrompt = CustomPrompt,
             UseCustomPrompt = UseCustomPrompt,
-            PromptTemplateName = templateName
+            PromptTemplateName = templateName,
+            EnableMultiThreadTranslation = EnableMultiThreadTranslation,
+            MaxThreads = Math.Clamp(MaxThreads, 1, 10),
+            ThreadIntervalMs = Math.Max(0, ThreadIntervalMs)
         };
 
         // 保存到磁盘
