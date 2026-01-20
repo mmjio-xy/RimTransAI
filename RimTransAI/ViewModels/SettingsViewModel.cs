@@ -36,6 +36,9 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty] private string _customPrompt = string.Empty;
     [ObservableProperty] private int _selectedTemplateIndex = 0;
 
+    // 是否使用默认提示词（用于避免 XAML 负向绑定）
+    public bool UseDefaultPrompt => !UseCustomPrompt;
+
     // 验证错误信息
     [ObservableProperty] private string _validationError = string.Empty;
 
@@ -105,6 +108,7 @@ public partial class SettingsViewModel : ViewModelBase
     partial void OnUseCustomPromptChanged(bool value)
     {
         OnPropertyChanged(nameof(PreviewPrompt));
+        OnPropertyChanged(nameof(UseDefaultPrompt));
     }
 
     partial void OnSelectedLanguageIndexChanged(int value)

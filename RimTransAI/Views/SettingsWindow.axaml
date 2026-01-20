@@ -155,7 +155,7 @@
                                     <StackPanel Orientation="Horizontal" Spacing="15">
                                         <RadioButton Content="使用默认提示词"
                                                      GroupName="PromptMode"
-                                                     IsChecked="{Binding !UseCustomPrompt}"/>
+                                                     IsChecked="{Binding UseDefaultPrompt}"/>
                                         <RadioButton Content="使用自定义提示词"
                                                      GroupName="PromptMode"
                                                      IsChecked="{Binding UseCustomPrompt}"/>
