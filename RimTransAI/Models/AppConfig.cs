@@ -20,4 +20,9 @@ public class AppConfig
     public string CustomPrompt { get; set; } = "";         // 自定义提示词
     public bool UseCustomPrompt { get; set; } = false;     // 是否使用自定义提示词
     public string PromptTemplateName { get; set; } = "Default"; // 预设模板名称
+
+    // 多线程翻译配置
+    public bool EnableMultiThreadTranslation { get; set; } = false; // 是否启用多线程翻译
+    public int MaxThreads { get; set; } = 4; // 最大并发线程数（1-10）
+    public int ThreadIntervalMs { get; set; } = 100; // 并发请求间隔（毫秒）
 }
