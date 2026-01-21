@@ -464,10 +464,7 @@ public class ReflectionAnalyzer
         bool isBackingField = field.Name.Contains("<") && field.Name.Contains("BackingField");
         if (field.Name.Contains("<") && !isBackingField) return false;
 
-        // 检查名字时使用清理后的名字
-        var nameToCheck = isBackingField ? CleanBackingFieldName(field.Name) : field.Name;
-        var nameLower = nameToCheck.ToLower();
-        
+        // 性能优化：不执行 ToLower()，直接使用 CompareTo 检查
 
         // 检查 MustTranslate 特性
         if (field.CustomAttributes.Any(attr => attr.AttributeType.Name == "MustTranslateAttribute")) return true;

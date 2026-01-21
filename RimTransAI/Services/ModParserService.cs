@@ -1,7 +1,10 @@
 using System;
+using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.Linq;
@@ -69,37 +72,44 @@ public class ModParserService
 
         // 第三步：扫描并解析 XML 文件（模拟 RimWorld 加载 Defs）
         Logger.Info("步骤 3/4: 扫描 Defs XML 文件...");
-        var xmlFiles = Directory.GetFiles(modPath, "*.xml", SearchOption.AllDirectories);
-        Logger.Info($"找到 {xmlFiles.Length} 个 XML 文件");
-
+        // 优化：使用 EnumerateFiles 替代 GetFiles，减少内存占用
+        var xmlFilesEnumerator = Directory.EnumerateFiles(modPath, "*.xml", SearchOption.AllDirectories);
+        int totalXmlFiles = 0;
         int processedFiles = 0;
         int skippedFiles = 0;
 
-        foreach (var file in xmlFiles)
+        // 预先计算文件总数（用于日志）
+        foreach (var _ in xmlFilesEnumerator) totalXmlFiles++;
+        Logger.Info($"找到 {totalXmlFiles} 个 XML 文件");
+
+        // 优化：并行处理 XML 文件，使用 ConcurrentBag 线程安全收集结果
+        var itemsConcurrent = new System.Collections.Concurrent.ConcurrentBag<TranslationItem>();
+        object lockObj = new object();
+
+        Parallel.ForEach(Directory.EnumerateFiles(modPath, "*.xml", SearchOption.AllDirectories), file =>
         {
             // 只解析 Defs 和 Patches 目录下的文件
             if (!file.Contains("Defs", StringComparison.OrdinalIgnoreCase) &&
                 !file.Contains("Patches", StringComparison.OrdinalIgnoreCase))
             {
-                skippedFiles++;
-                continue;
+                Interlocked.Increment(ref skippedFiles);
+                return;
             }
 
             try
             {
                 var doc = XDocument.Load(file);
-                if (doc.Root == null) continue;
+                if (doc.Root == null) return;
 
                 string version = GetVersionFromPath(file);
-                var validDefs = doc.Root.Elements().ToList();
 
-                // 使用 TranslationExtractor 提取翻译单元
-                var units = extractor.Extract(validDefs, file, version);
+                // 优化：直接遍历元素，避免 ToList() 内存分配
+                var units = extractor.Extract(doc.Root.Elements(), file, version);
 
                 // 转换为 TranslationItem
                 foreach (var unit in units)
                 {
-                    items.Add(new TranslationItem
+                    itemsConcurrent.Add(new TranslationItem
                     {
                         Key = unit.Key,
                         DefType = unit.DefType,
@@ -111,19 +121,34 @@ public class ModParserService
                     });
                 }
 
-                processedFiles++;
+                Interlocked.Increment(ref processedFiles);
+
+                // 每处理 50 个文件输出一次进度
+                if (processedFiles % 50 == 0)
+                {
+                    Logger.Info($"已处理: {processedFiles}/{totalXmlFiles} 个文件");
+                }
             }
             catch (XmlException ex)
             {
-                Logger.Warning($"XML格式错误 {Path.GetFileName(file)}: {ex.Message}");
+                lock (lockObj)
+                {
+                    Logger.Warning($"XML格式错误 {Path.GetFileName(file)}: {ex.Message}");
+                }
             }
             catch (Exception ex)
             {
-                Logger.Error($"解析文件出错 {Path.GetFileName(file)}", ex);
+                lock (lockObj)
+                {
+                    Logger.Error($"解析文件出错 {Path.GetFileName(file)}", ex);
+                }
             }
-        }
+        });
 
         Logger.Info($"Defs 扫描完成: 处理 {processedFiles} 个，跳过 {skippedFiles} 个");
+
+        // 将并发收集的项转换为 List
+        items.AddRange(itemsConcurrent);
 
         // 第四步：扫描 Keyed 文件
         Logger.Info("步骤 4/4: 扫描 Keyed 文件...");
@@ -198,9 +223,8 @@ public class ModParserService
             }
 
             string version = GetVersionFromPath(filePath);
-            var validDefs = doc.Root.Elements().ToList();
-
-            var units = extractor.Extract(validDefs, filePath, version);
+            // 优化：直接传递 IEnumerable，避免 ToList()
+            var units = extractor.Extract(doc.Root.Elements(), filePath, version);
 
             foreach (var unit in units)
             {
@@ -299,15 +323,16 @@ public class ModParserService
             var rootAssembliesDir = Path.Combine(modPath, "Assemblies");
             if (Directory.Exists(rootAssembliesDir))
             {
-                var rootDlls = Directory.GetFiles(rootAssembliesDir, "*.dll", SearchOption.TopDirectoryOnly);
+                // 优化：使用 EnumerateFiles
+                var rootDlls = Directory.EnumerateFiles(rootAssembliesDir, "*.dll", SearchOption.TopDirectoryOnly).ToList();
                 allDllFiles.AddRange(rootDlls);
-                Logger.Info($"  根目录/Assemblies: {rootDlls.Length} 个 DLL");
+                Logger.Info($"  根目录/Assemblies: {rootDlls.Count} 个 DLL");
             }
 
             // 2.2 检查版本目录下的 Assemblies 文件夹
             if (Directory.Exists(modPath))
             {
-                var versionDirs = Directory.GetDirectories(modPath, "*", SearchOption.TopDirectoryOnly);
+                var versionDirs = Directory.EnumerateDirectories(modPath, "*", SearchOption.TopDirectoryOnly);
                 foreach (var versionDir in versionDirs)
                 {
                     var dirName = Path.GetFileName(versionDir);
@@ -319,10 +344,11 @@ public class ModParserService
                         var versionAssembliesDir = Path.Combine(versionDir, "Assemblies");
                         if (Directory.Exists(versionAssembliesDir))
                         {
-                            var versionDlls = Directory.GetFiles(versionAssembliesDir, "*.dll",
-                                SearchOption.TopDirectoryOnly);
+                            // 优化：使用 EnumerateFiles
+                            var versionDlls = Directory.EnumerateFiles(versionAssembliesDir, "*.dll",
+                                SearchOption.TopDirectoryOnly).ToList();
                             allDllFiles.AddRange(versionDlls);
-                            Logger.Info($"  {dirName}/Assemblies: {versionDlls.Length} 个 DLL");
+                            Logger.Info($"  {dirName}/Assemblies: {versionDlls.Count} 个 DLL");
                         }
                     }
                 }
@@ -399,7 +425,7 @@ public class ModParserService
         }
 
         // 2. 检查版本目录下的 Languages/English/Keyed
-        var versionDirs = Directory.GetDirectories(modPath, "*", SearchOption.TopDirectoryOnly);
+        var versionDirs = Directory.EnumerateDirectories(modPath, "*", SearchOption.TopDirectoryOnly);
         foreach (var versionDir in versionDirs)
         {
             var dirName = Path.GetFileName(versionDir);
@@ -426,7 +452,8 @@ public class ModParserService
         int processedFiles = 0;
         foreach (var (keyedDir, version) in keyedDirs)
         {
-            var xmlFiles = Directory.GetFiles(keyedDir, "*.xml", SearchOption.AllDirectories);
+            // 优化：使用 EnumerateFiles
+            var xmlFiles = Directory.EnumerateFiles(keyedDir, "*.xml", SearchOption.AllDirectories);
             foreach (var file in xmlFiles)
             {
                 var fileItems = ParseKeyedFile(file, version);

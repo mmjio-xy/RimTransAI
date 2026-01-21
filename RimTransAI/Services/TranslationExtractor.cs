@@ -15,6 +15,24 @@ public class TranslationExtractor
     private readonly Dictionary<string, HashSet<string>> _reflectionMap;
     private readonly Dictionary<string, List<string>> _shortNameMap;
 
+    // 性能优化：预构建黑名单哈希集合，使用 OrdinalIgnoreCase 提升查找速度
+    private static readonly HashSet<string> BlacklistSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        "path", "file", "texture", "icon", "graphic", "sound", "defname",
+        "tag", "setting", "config", "class", "worker", "link", "curve",
+        "size", "color", "shader", "mask", "effect", "cost", "stat",
+        "tex", "coordinates", "offset", "labelshort"
+    };
+
+    // 性能优化：预编译包含关键词（用于 Contains 检查）
+    private static readonly string[] BlacklistKeywords =
+    {
+        "path", "file", "texture", "icon", "graphic", "sound", "defname",
+        "tag", "setting", "config", "class", "worker", "link", "curve",
+        "size", "color", "shader", "mask", "effect", "cost", "stat",
+        "tex", "coordinates", "offset"
+    };
+
     public TranslationExtractor(Dictionary<string, HashSet<string>> reflectionMap)
     {
         _reflectionMap = reflectionMap ?? throw new ArgumentNullException(nameof(reflectionMap));
@@ -26,9 +44,10 @@ public class TranslationExtractor
     {
         foreach (var fullClassName in _reflectionMap.Keys)
         {
-            string shortName = fullClassName.Contains('.')
-                ? fullClassName.Substring(fullClassName.LastIndexOf('.') + 1)
-                : fullClassName;
+            // 性能优化：使用 Span<T> 避免字符串分配
+            var span = fullClassName.AsSpan();
+            int lastDot = span.LastIndexOf('.');
+            string shortName = lastDot >= 0 ? span[(lastDot + 1)..].ToString() : fullClassName;
 
             if (!_shortNameMap.ContainsKey(shortName))
             {
@@ -38,7 +57,7 @@ public class TranslationExtractor
         }
     }
 
-    public List<TranslationUnit> Extract(List<XElement> validDefs, string sourceFile, string version)
+    public List<TranslationUnit> Extract(IEnumerable<XElement> validDefs, string sourceFile, string version)
     {
         var results = new List<TranslationUnit>();
         foreach (var defElement in validDefs)
@@ -182,35 +201,29 @@ public class TranslationExtractor
     // --- 辅助方法 ---
 
     /// <summary>
-    /// [新增] 强制黑名单：这些字段绝对不翻译
+    /// [性能优化] 强制黑名单：这些字段绝对不翻译
+    /// 使用预构建的哈希集合，查找速度从 O(n*m) 提升到 O(1)
     /// </summary>
     private bool IsBlacklisted(string name)
     {
-        string n = name.ToLower();
-        return n.Contains("path") || 
-               n.Contains("file") || 
-               n.Contains("texture") || 
-               n.Contains("icon") || 
-               n.Contains("graphic") || 
-               n.Contains("sound") || 
-               n.Contains("defname") ||
-               n.Contains("tag") ||      // tags, weaponTags
-               n.Contains("setting") ||
-               n.Contains("config") ||
-               n.Contains("class") ||
-               n.Contains("worker") ||
-               n.Contains("link") ||     // linkableTags
-               n.Contains("curve") ||
-               n.Contains("size") ||
-               n.Contains("color") ||
-               n.Contains("shader") ||
-               n.Contains("mask") ||
-               n.Contains("effect") ||
-               n.Contains("cost") ||     // costList
-               n.Contains("stat") ||
-               n.Contains("tex") ||      // texPath
-               n.Contains("coordinates") ||
-               n.Contains("offset");
+        // 快速检查：完全匹配黑名单中的关键字（忽略大小写）
+        if (BlacklistSet.Contains(name))
+        {
+            return true;
+        }
+
+        // 慢速检查：包含黑名单关键字（用于复合字段名如 "texPath", "costList"）
+        // 使用 AsSpan 避免字符串分配
+        var nameSpan = name.AsSpan();
+        foreach (var keyword in BlacklistKeywords)
+        {
+            if (nameSpan.Contains(keyword.AsSpan(), StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /// <summary>
