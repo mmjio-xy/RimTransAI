@@ -31,6 +31,9 @@ public class ReflectionAnalyzer
     // 性能优化：TypeReference 缓存，避免重复创建对象
     private readonly Dictionary<string, TypeReference> _typeReferenceCache = new();
 
+    // 性能优化：继承关系图（基类名 -> 派生类名列表）
+    private readonly Dictionary<string, List<string>> _inheritanceGraph = new();
+
     /// <summary>
     /// 加载核心程序集 (Assembly-CSharp.dll)
     /// 模拟 RimWorld 启动时加载核心类型的过程
@@ -43,8 +46,9 @@ public class ReflectionAnalyzer
             throw new FileNotFoundException($"核心程序集不存在: {corePath}");
         }
 
-        // [性能优化] 清理旧的 TypeReference 缓存
+        // [性能优化] 清理旧的缓存
         _typeReferenceCache.Clear();
+        _inheritanceGraph.Clear();
 
         try
         {
@@ -73,6 +77,10 @@ public class ReflectionAnalyzer
             // 第一步：构建核心类型缓存
             Logger.Info("正在构建核心类型缓存...");
             BuildCoreTypeCache();
+
+            // [性能优化] 步骤 1.5：构建继承关系图
+            Logger.Info("正在构建继承关系图...");
+            BuildInheritanceGraph();
 
             // 第二步：分析核心基类及其派生类的可翻译字段
             Logger.Info("正在分析核心类型的可翻译字段...");
@@ -106,6 +114,31 @@ public class ReflectionAnalyzer
         }
 
         Logger.Info($"已缓存 {_typeCache.Count} 个核心类型");
+    }
+
+    /// <summary>
+    /// [性能优化] 构建继承关系图
+    /// 将每个基类映射到其所有派生类，避免 O(n²) 遍历
+    /// </summary>
+    private void BuildInheritanceGraph()
+    {
+        _inheritanceGraph.Clear();
+
+        foreach (var type in _typeCache.Values)
+        {
+            if (type.BaseType?.FullName != null)
+            {
+                // 使用 TryGetOrCreate 避免 key 重复检查
+                if (!_inheritanceGraph.TryGetValue(type.BaseType.FullName, out var derivedList))
+                {
+                    derivedList = new List<string>();
+                    _inheritanceGraph[type.BaseType.FullName] = derivedList;
+                }
+                derivedList.Add(type.FullName);
+            }
+        }
+
+        Logger.Info($"已构建继承关系图: {_inheritanceGraph.Count} 个基类节点");
     }
 
     /// <summary>
@@ -154,12 +187,15 @@ public class ReflectionAnalyzer
         // 分析基类本身
         AnalyzeTypeFields(baseType);
 
-        // 查找所有派生类
-        foreach (var type in _typeCache.Values)
+        // [性能优化] 直接从继承关系图获取派生类，O(1) 查找替代 O(n²) 遍历
+        if (_inheritanceGraph.TryGetValue(baseType.FullName, out var derivedTypeNames))
         {
-            if (IsInheritFrom(type, baseType.FullName))
+            foreach (var derivedTypeName in derivedTypeNames)
             {
-                AnalyzeTypeFields(type);
+                if (_typeCache.TryGetValue(derivedTypeName, out var derivedType))
+                {
+                    AnalyzeTypeFields(derivedType);
+                }
             }
         }
     }
