@@ -515,6 +515,10 @@ public class ReflectionAnalyzer
     private bool IsTranslatableField(FieldDefinition field)
     {
         if (field.IsStatic) return false;
+        
+        
+        if (field.CustomAttributes.Any(attr => attr.AttributeType.Name == "NoTranslateAttribute")) 
+            return false;
 
         //  允许自动属性的后台字段
         // 只有当名字包含 < 但不包含 BackingField 时，才认为是编译器生成的垃圾并过滤
