@@ -19,6 +19,22 @@ public class ModParserService
 
     // 用于匹配目录名中的版本号（不带斜杠）
     private static readonly Regex VersionDirRegex = new Regex(@"^\d+\.\d+$", RegexOptions.Compiled);
+
+    /// <summary>
+    /// 目录黑名单（文件遍历时直接跳过，防止扫描无效文件导致性能问题）
+    /// </summary>
+    private static readonly HashSet<string> DirectoryBlacklist = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        // A. 资源类（绝对没有 XML 代码）
+        "Textures", "Sounds", "Materials", "Meshes", "Music",
+
+        // B. 系统与元数据类（XML 不是用来翻译的）
+        "About", "Languages", "News",
+
+        // C. 开发垃圾文件（如果你扫描的是源码版 Mod）
+        ".git", ".vs", ".idea", "bin", "obj", "Source"
+    };
+
     private readonly ConfigService _configService;
     private readonly ReflectionAnalyzer _reflectionAnalyzer;
     private Dictionary<string, HashSet<string>>? _reflectionMap;
@@ -75,14 +91,15 @@ public class ModParserService
 
         // 第三步：扫描并解析 XML 文件（模拟 RimWorld 加载 Defs）
         Logger.Info("步骤 3/4: 扫描 Defs XML 文件...");
-        // 优化：使用 EnumerateFiles 替代 GetFiles，减少内存占用
-        var xmlFilesEnumerator = Directory.EnumerateFiles(modPath, "*.xml", SearchOption.AllDirectories);
-        int totalXmlFiles = 0;
+
+        // 【重构】使用递归遍历（带黑名单剪枝）收集所有 XML 文件
+        var allXmlFiles = new ConcurrentBag<string>();
+        CollectXmlFilesRecursively(modPath, allXmlFiles);
+
+        int totalXmlFiles = allXmlFiles.Count;
         int processedFiles = 0;
         int skippedFiles = 0;
-
-        // 预先计算文件总数（用于日志）
-        foreach (var _ in xmlFilesEnumerator) totalXmlFiles++;
+        int validDefFiles = 0;
         Logger.Info($"找到 {totalXmlFiles} 个 XML 文件");
 
         // [性能优化] 步骤 2.5/4: 构建版本路径缓存
@@ -93,18 +110,30 @@ public class ModParserService
         var itemsConcurrent = new System.Collections.Concurrent.ConcurrentBag<TranslationItem>();
         object lockObj = new object();
 
-        Parallel.ForEach(Directory.EnumerateFiles(modPath, "*.xml", SearchOption.AllDirectories), file =>
+        // 【重构】并行处理 XML 文件，带根节点验证
+        Parallel.ForEach(allXmlFiles, file =>
         {
-            // 只解析 Defs 和 Patches 目录下的文件
-            if (!file.Contains("Defs", StringComparison.OrdinalIgnoreCase) &&
-                !file.Contains("Patches", StringComparison.OrdinalIgnoreCase))
-            {
-                Interlocked.Increment(ref skippedFiles);
-                return;
-            }
-
             try
             {
+                // 【新增】步骤 1：快速验证根节点类型（最小代价）
+                var rootNodeName = GetXmlRootNodeName(file);
+                if (rootNodeName == null)
+                {
+                    Interlocked.Increment(ref skippedFiles);
+                    return;
+                }
+
+                // 【新增】步骤 2：验证是否为有效的 Defs 文件
+                if (!IsValidDefFile(rootNodeName))
+                {
+                    Logger.Debug($"[跳过] {Path.GetFileName(file)} (根节点: {rootNodeName})");
+                    Interlocked.Increment(ref skippedFiles);
+                    return;
+                }
+
+                Interlocked.Increment(ref validDefFiles);
+
+                // 步骤 3：完整加载 XML 文件
                 var doc = XDocument.Load(file);
                 if (doc.Root == null) return;
 
@@ -141,6 +170,7 @@ public class ModParserService
             }
             catch (XmlException ex)
             {
+                Interlocked.Increment(ref skippedFiles);
                 lock (lockObj)
                 {
                     Logger.Warning($"XML格式错误 {Path.GetFileName(file)}: {ex.Message}");
@@ -148,6 +178,7 @@ public class ModParserService
             }
             catch (Exception ex)
             {
+                Interlocked.Increment(ref skippedFiles);
                 lock (lockObj)
                 {
                     Logger.Error($"解析文件出错 {Path.GetFileName(file)}", ex);
@@ -155,7 +186,7 @@ public class ModParserService
             }
         });
 
-        Logger.Info($"Defs 扫描完成: 处理 {processedFiles} 个，跳过 {skippedFiles} 个");
+        Logger.Info($"Defs 扫描完成: 有效 Defs 文件 {validDefFiles} 个，处理 {processedFiles} 个，跳过 {skippedFiles} 个");
 
         // 将并发收集的项转换为 List
         items.AddRange(itemsConcurrent);
@@ -288,6 +319,13 @@ public class ModParserService
         foreach (var versionDir in Directory.EnumerateDirectories(modPath, "*", SearchOption.TopDirectoryOnly))
         {
             var dirName = Path.GetFileName(versionDir);
+
+            // 跳过黑名单目录
+            if (DirectoryBlacklist.Contains(dirName))
+            {
+                continue;
+            }
+
             if (VersionDirRegex.IsMatch(dirName) ||
                 dirName.Equals("Common", StringComparison.OrdinalIgnoreCase))
             {
@@ -305,10 +343,15 @@ public class ModParserService
             }
         }
 
-        // 3. 为每个目录下的 XML 文件缓存版本号
+        // 3. 为每个目录下的 XML 文件缓存版本号（使用带黑名单的递归遍历）
         foreach (var (dirPath, version) in versionDirs)
         {
-            foreach (var file in Directory.EnumerateFiles(dirPath, "*.xml", SearchOption.AllDirectories))
+            // 使用递归遍历，跳过黑名单目录
+            var subDirFiles = new ConcurrentBag<string>();
+            CollectXmlFilesRecursively(dirPath, subDirFiles);
+
+            // 缓存版本号
+            foreach (var file in subDirFiles)
             {
                 cache[file] = version;
             }
@@ -607,5 +650,113 @@ public class ModParserService
         if (string.IsNullOrWhiteSpace(element.Value)) return true;
 
         return false;
+    }
+
+    /// <summary>
+    /// 递归遍历目录，收集 XML 文件（带黑名单剪枝）
+    /// </summary>
+    /// <param name="directory">当前目录</param>
+    /// <param name="xmlFiles">收集的 XML 文件列表</param>
+    private static void CollectXmlFilesRecursively(string directory, ConcurrentBag<string> xmlFiles)
+    {
+        try
+        {
+            // 步骤 1：检查目录名是否在黑名单中（黑名单剪枝）
+            var dirName = Path.GetFileName(directory);
+            if (DirectoryBlacklist.Contains(dirName))
+            {
+                Logger.Debug($"[黑名单跳过] 目录: {dirName}");
+                return; // 直接跳过整个目录树
+            }
+
+            // 步骤 2：收集当前目录下的 XML 文件
+            foreach (var file in Directory.EnumerateFiles(directory, "*.xml"))
+            {
+                xmlFiles.Add(file);
+            }
+
+            // 步骤 3：递归遍历子目录
+            foreach (var subDir in Directory.EnumerateDirectories(directory))
+            {
+                CollectXmlFilesRecursively(subDir, xmlFiles);
+            }
+        }
+        catch (UnauthorizedAccessException ex)
+        {
+            Logger.Warning($"[权限拒绝] 无法访问目录: {directory} - {ex.Message}");
+        }
+        catch (Exception ex)
+        {
+            Logger.Error($"[目录遍历错误] {directory}", ex);
+        }
+    }
+
+    /// <summary>
+    /// 快速读取 XML 文件的根节点名称（最小代价验证）
+    /// </summary>
+    /// <param name="filePath">XML 文件路径</param>
+    /// <returns>根节点名称，如果失败返回 null</returns>
+    private static string? GetXmlRootNodeName(string filePath)
+    {
+        try
+        {
+            // 使用 XmlReader 快速读取根节点（避免完整加载 XDocument）
+            var settings = new XmlReaderSettings
+            {
+                DtdProcessing = DtdProcessing.Ignore, // 忽略 DTD，提升性能
+                IgnoreComments = true,
+                IgnoreWhitespace = true,
+                CloseInput = true
+            };
+
+            using var reader = XmlReader.Create(filePath, settings);
+
+            // 快速移动到根元素
+            reader.MoveToContent();
+
+            // 返回根节点名称
+            return reader.LocalName;
+        }
+        catch (XmlException ex)
+        {
+            Logger.Debug($"[XML格式错误] {Path.GetFileName(filePath)}: {ex.Message}");
+            return null;
+        }
+        catch (Exception ex)
+        {
+            Logger.Warning($"[读取文件失败] {Path.GetFileName(filePath)}: {ex.Message}");
+            return null;
+        }
+    }
+
+    /// <summary>
+    /// 验证 XML 文件是否为有效的 Defs 文件
+    /// </summary>
+    /// <param name="rootNodeName">根节点名称</param>
+    /// <returns>true 表示是有效的 Defs 文件，false 表示跳过</returns>
+    private static bool IsValidDefFile(string rootNodeName)
+    {
+        // 命中目标：游戏数据文件
+        if (rootNodeName.Equals("Defs", StringComparison.OrdinalIgnoreCase))
+        {
+            return true;
+        }
+
+        // 跳过：About.xml
+        if (rootNodeName.Equals("ModMetaData", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        // 跳过：现有汉化文件
+        if (rootNodeName.Equals("LanguageData", StringComparison.OrdinalIgnoreCase))
+        {
+            return false;
+        }
+
+        // 跳过：Patch 补丁文件（通常不包含直接可翻译 Key）
+        return (rootNodeName.Equals("Patch", StringComparison.OrdinalIgnoreCase) ||
+                rootNodeName.Equals("Operation", StringComparison.OrdinalIgnoreCase)) && false;
+        // 其他：跳过
     }
 }
