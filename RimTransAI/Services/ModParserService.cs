@@ -23,6 +23,9 @@ public class ModParserService
     private readonly ReflectionAnalyzer _reflectionAnalyzer;
     private Dictionary<string, HashSet<string>>? _reflectionMap;
 
+    // 性能优化：版本路径缓存（文件路径 -> 版本号）
+    private Dictionary<string, string>? _versionCache;
+
     // 构造函数：必须提供反射分析器和配置服务
     public ModParserService(ReflectionAnalyzer reflectionAnalyzer, ConfigService configService)
     {
@@ -82,6 +85,10 @@ public class ModParserService
         foreach (var _ in xmlFilesEnumerator) totalXmlFiles++;
         Logger.Info($"找到 {totalXmlFiles} 个 XML 文件");
 
+        // [性能优化] 步骤 2.5/4: 构建版本路径缓存
+        Logger.Info("步骤 2.5/4: 构建版本路径缓存...");
+        _versionCache = BuildVersionCache(modPath);
+
         // 优化：并行处理 XML 文件，使用 ConcurrentBag 线程安全收集结果
         var itemsConcurrent = new System.Collections.Concurrent.ConcurrentBag<TranslationItem>();
         object lockObj = new object();
@@ -101,7 +108,10 @@ public class ModParserService
                 var doc = XDocument.Load(file);
                 if (doc.Root == null) return;
 
-                string version = GetVersionFromPath(file);
+                // [性能优化] 从缓存获取版本号，O(1) 查找
+                string version = _versionCache != null && _versionCache.TryGetValue(file, out var cachedVer)
+                    ? cachedVer
+                    : GetVersionFromPath(file);
 
                 // 优化：直接遍历元素，避免 ToList() 内存分配
                 var units = extractor.Extract(doc.Root.Elements(), file, version);
@@ -250,6 +260,62 @@ public class ModParserService
         }
 
         return items;
+    }
+
+    /// <summary>
+    /// [性能优化] 预构建版本路径缓存
+    /// 将文件路径映射到版本号，避免重复的正则匹配
+    /// </summary>
+    private Dictionary<string, string> BuildVersionCache(string modPath)
+    {
+        var cache = new Dictionary<string, string>();
+        var versionDirs = new List<(string path, string version)>();
+
+        // 1. 检查根目录下的 Defs 和 Patches
+        var rootDefsDir = Path.Combine(modPath, "Defs");
+        var rootPatchesDir = Path.Combine(modPath, "Patches");
+
+        if (Directory.Exists(rootDefsDir))
+        {
+            versionDirs.Add((rootDefsDir, ""));
+        }
+        if (Directory.Exists(rootPatchesDir))
+        {
+            versionDirs.Add((rootPatchesDir, ""));
+        }
+
+        // 2. 检查版本目录下的 Defs 和 Patches
+        foreach (var versionDir in Directory.EnumerateDirectories(modPath, "*", SearchOption.TopDirectoryOnly))
+        {
+            var dirName = Path.GetFileName(versionDir);
+            if (VersionDirRegex.IsMatch(dirName) ||
+                dirName.Equals("Common", StringComparison.OrdinalIgnoreCase))
+            {
+                var versionDefsDir = Path.Combine(versionDir, "Defs");
+                var versionPatchesDir = Path.Combine(versionDir, "Patches");
+
+                if (Directory.Exists(versionDefsDir))
+                {
+                    versionDirs.Add((versionDefsDir, dirName));
+                }
+                if (Directory.Exists(versionPatchesDir))
+                {
+                    versionDirs.Add((versionPatchesDir, dirName));
+                }
+            }
+        }
+
+        // 3. 为每个目录下的 XML 文件缓存版本号
+        foreach (var (dirPath, version) in versionDirs)
+        {
+            foreach (var file in Directory.EnumerateFiles(dirPath, "*.xml", SearchOption.AllDirectories))
+            {
+                cache[file] = version;
+            }
+        }
+
+        Logger.Info($"版本缓存构建完成: {cache.Count} 个文件");
+        return cache;
     }
 
     /// <summary>
