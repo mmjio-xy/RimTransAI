@@ -181,35 +181,48 @@ public class TranslationExtractor
 
         var children = element.Elements().ToList();
         var extractedKeys = new HashSet<string>();
-        int listIndex = 0;
-        bool isList = children.Count > 0 && children.All(e => e.Name.LocalName == "li");
-
+        int liIndex = 0;  // 【改进】li 索引计数器，用于生成路径段
+ 
         foreach (var child in children)
         {
             string tagName = child.Name.LocalName;
             if (tagName == "defName") continue;
 
-            // --- 关键修复 1：黑名单强制检查 ---
+            // --- 第一层：黑名单强制检查 ---
             // 无论反射怎么说，如果字段名看起来像路径，直接跳过
             if (IsBlacklisted(tagName)) continue;
-
-            string currentSegment = (isList || tagName == "li") ? listIndex++.ToString() : tagName;
+ 
+            // --- 强制索引生成逻辑（即时判断） ---
+            string currentSegment;
+            if (tagName.Equals("li", StringComparison.OrdinalIgnoreCase))
+            {
+                // 是 <li> 节点，使用数字索引
+                currentSegment = liIndex.ToString();
+                liIndex++;
+            }
+            else
+            {
+                // 普通字段，使用标签名
+                currentSegment = tagName;
+            }
+ 
+            // --- 路径拼接 ---
             string fullPath = string.IsNullOrEmpty(parentPath) ? currentSegment : $"{parentPath}.{currentSegment}";
-
+ 
             bool shouldExtract = false;
             string reason = "";
-
+ 
             // --- 场景 A: 普通字段 ---
-            if (tagName != "li")
+            if (!tagName.Equals("li", StringComparison.OrdinalIgnoreCase))
             {
                 // 【漏斗式筛选】四层过滤策略
-
+ 
                 // 第二层：内容特征防御（防止路径误判）
                 if (IsPathLikeContent(child.Value))
                 {
                     continue; // 跳过路径类型的内容
                 }
-
+ 
                 // 第三层：白名单放行（ RimWorld 官方字段）
                 if (IsWhitelistedField(tagName))
                 {
@@ -230,17 +243,14 @@ public class TranslationExtractor
                 }
             }
             // --- 场景 B: 列表项 (li) ---
-            else if (tagName == "li" && !child.HasElements)
+            else if (!child.HasElements)
             {
-                if (allowListExtraction)
+                // 【放宽限制】只要 <li> 节点是无子元素的纯文本，且不是文件路径，就允许提取
+                // 第二层：内容特征防御
+                if (!IsPathLikeContent(child.Value))
                 {
-                    // 【漏斗式筛选】
-                    // 第二层：内容特征防御
-                    if (!IsPathLikeContent(child.Value))
-                    {
-                        shouldExtract = true;
-                        reason = "Allowed_List_Item";
-                    }
+                    shouldExtract = true;
+                    reason = "List_Item";
                 }
             }
 
@@ -267,23 +277,25 @@ public class TranslationExtractor
             }
 
             // --- 递归处理 ---
+            // 【确保路径连续性】无论是否提取了当前节点，只要有子节点就递归
             if (child.HasElements)
             {
-                // 决定下一层是否允许提取 li
+                // 决定下一层是否允许提取 li（保留原有逻辑）
                 bool nextAllowListExtraction = false;
 
                 if (hasReflectionData)
                 {
-                    // 如果反射确认它是可翻译字段（且不是黑名单），则允许下一层提取
+                    // 如果反射确认它是可翻译字段（且不是黑名单），则允许下一层提取 li
                     if (translatableFields!.Contains(tagName)) nextAllowListExtraction = true;
                 }
                 else
                 {
-                    // 无反射时，只有白名单列表（如 rulesStrings）才允许提取下一层
+                    // 无反射时，只有白名单列表（如 rulesStrings）才允许提取下一层 li
                     if (IsSafeTextList(tagName)) nextAllowListExtraction = true;
                 }
 
                 string childTypeName = InferChildType(tagName, child);
+                // 【强制传递 fullPath】确保路径连续性
                 ExtractFromDef(child, childTypeName, defName, defType, fullPath, sourceFile, version, results, nextAllowListExtraction);
             }
         }
