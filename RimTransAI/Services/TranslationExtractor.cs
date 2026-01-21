@@ -40,7 +40,10 @@ public class TranslationExtractor
         "path", "file", "icon", "graphic",
         "setting", "config", "worker", "link", "curve",
         "size", "color", "mask", "effect", "cost", "stat",
-        "tex", "coordinates", "offset", "labelshort"
+        "tex", "coordinates", "offset", "labelshort",
+        
+        // 【新增】组件键名
+        "key"
     };
 
     // 性能优化：预编译包含关键词（用于 Contains 检查）
@@ -65,6 +68,44 @@ public class TranslationExtractor
         "file", "icon", "graphic", "setting", "config", "link", "curve",
         "size", "color", "mask", "effect", "cost", "stat",
         "tex", "coordinates", "offset"
+    };
+
+    /// <summary>
+    /// 【列表黑名单】技术性列表（其子项 li 绝对不能翻译）
+    /// 这些列表包含的是 DefName 引用、Type 类名或枚举，而非显示文本
+    /// </summary>
+    private static readonly HashSet<string> TechnicalListSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        // 1. 核心系统与前置
+        "prerequisites", "researchPrerequisites", "hiddenPrerequisites",
+        "requiredResearchFacilities", // 【新增】研究前置建筑
+        "requiredMemeList", // 【新增】文化形态需求
+        
+        // 2. 物品分类、标签与过滤器
+        "thingCategories", "stuffCategories", "tradeTags", "weaponTags", "apparelTags", "destroyOnDrop",
+        "categories", // 【新增】核心过滤器，引发了大量报错
+        "filter", "fixedIngredientFilter", "defaultIngredientFilter", "ingredients", "products",
+        "specialProducts", // 【新增】特殊产品类型（枚举）
+        "backstoryFiltersOverride", // 【新增】背景故事过滤器
+        
+        // 3. 配方与生产配置
+        "recipeUsers", "recipes",
+        "importRecipesFrom", // 【新增】PRF 特有：从其他工作台导入配方
+        "excludeOres", // 【新增】PRF 特有：矿机排除列表
+        
+        // 4. 工作与行为
+        "workTypes", // 【新增】无人机工作类型
+        "roleTags", // 【新增】角色标签
+        
+        // 5. 身体与健康
+        "appliedOnFixedBodyParts", "groups", "hediffGivers",
+        
+        // 6. 能力与属性
+        "requiredCapacities", "affordances", "capabilities", "statBases", "equippedStatOffsets",
+        "capacities", // 工具能力引用
+        
+        // 7. UI与程序引用
+        "inspectorTabs", "compClass", "comps", "modExtensions",
     };
 
     /// <summary>
@@ -137,8 +178,15 @@ public class TranslationExtractor
         var results = new List<TranslationUnit>();
         foreach (var defElement in validDefs)
         {
+            // 跳过 Abstract="True" 的 Def
+            // 抽象 Def 通常作为模板存在，游戏不直接加载其 DefInjected 翻译，提取会导致 "Found no match" 错误
+            var abstractAttr = defElement.Attribute("Abstract");
+            if (abstractAttr != null && abstractAttr.Value.Trim().Equals("true", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
             // 获取 DefType (从元素名或 Class 属性)
-            string defTypeName = defElement.Name.LocalName;
+            var defTypeName = defElement.Name.LocalName;
             var classAttr = defElement.Attribute("Class");
             if (classAttr != null && !string.IsNullOrWhiteSpace(classAttr.Value))
             {
@@ -154,14 +202,21 @@ public class TranslationExtractor
     /// <summary>
     /// 递归提取核心逻辑
     /// </summary>
+    /// <param name="defName"></param>
     /// <param name="defType">Def 的类型（用于 DefInjected 路径）</param>
+    /// <param name="results"></param>
     /// <param name="allowListExtraction">是否允许提取当前节点下的 li 列表项</param>
+    /// <param name="parentPath"></param>
+    /// <param name="sourceFile"></param>
+    /// <param name="element"></param>
+    /// <param name="currentTypeName"></param>
+    /// <param name="version"></param>
     private void ExtractFromDef(XElement element, string currentTypeName, string defName, string defType,
         string parentPath, string sourceFile, string version, List<TranslationUnit> results,
         bool allowListExtraction)
     {
         // 1. 确定类型名
-        string localTypeName = currentTypeName;
+        var localTypeName = currentTypeName;
         var classAttr = element.Attribute("Class");
         if (classAttr != null && !string.IsNullOrWhiteSpace(classAttr.Value))
             localTypeName = classAttr.Value;
@@ -177,15 +232,15 @@ public class TranslationExtractor
 
         // 3. 获取反射数据
         var translatableFields = ResolveTypeFields(localTypeName);
-        bool hasReflectionData = translatableFields != null && translatableFields.Count > 0;
+        var hasReflectionData = translatableFields != null && translatableFields.Count > 0;
 
         var children = element.Elements().ToList();
         var extractedKeys = new HashSet<string>();
-        int liIndex = 0;  // 【改进】li 索引计数器，用于生成路径段
+        var liIndex = 0;  // 【改进】li 索引计数器，用于生成路径段
  
         foreach (var child in children)
         {
-            string tagName = child.Name.LocalName;
+            var tagName = child.Name.LocalName;
             if (tagName == "defName") continue;
 
             // --- 第一层：黑名单强制检查 ---
@@ -207,10 +262,10 @@ public class TranslationExtractor
             }
  
             // --- 路径拼接 ---
-            string fullPath = string.IsNullOrEmpty(parentPath) ? currentSegment : $"{parentPath}.{currentSegment}";
+            var fullPath = string.IsNullOrEmpty(parentPath) ? currentSegment : $"{parentPath}.{currentSegment}";
  
-            bool shouldExtract = false;
-            string reason = "";
+            var shouldExtract = false;
+            var reason = "";
  
             // --- 场景 A: 普通字段 ---
             if (!tagName.Equals("li", StringComparison.OrdinalIgnoreCase))
@@ -245,12 +300,20 @@ public class TranslationExtractor
             // --- 场景 B: 列表项 (li) ---
             else if (!child.HasElements)
             {
-                // 【放宽限制】只要 <li> 节点是无子元素的纯文本，且不是文件路径，就允许提取
-                // 第二层：内容特征防御
-                if (!IsPathLikeContent(child.Value))
+                // 【修复】检查父级标签是否在技术列表黑名单中
+                // 解决 "Translated non-System.String list item" 错误
+                if (TechnicalListSet.Contains(element.Name.LocalName))
                 {
-                    shouldExtract = true;
-                    reason = "List_Item";
+                    shouldExtract = false;
+                }
+                else
+                {
+                    // 第二层：内容特征防御
+                    if (!IsPathLikeContent(child.Value))
+                    {
+                        shouldExtract = true;
+                        reason = "List_Item";
+                    }
                 }
             }
 
@@ -259,10 +322,9 @@ public class TranslationExtractor
             {
                 if (!string.IsNullOrEmpty(defName))
                 {
-                    string key = $"{defName}.{fullPath}";
-                    if (!extractedKeys.Contains(key))
+                    var key = $"{defName}.{fullPath}";
+                    if (extractedKeys.Add(key))
                     {
-                        extractedKeys.Add(key);
                         results.Add(new TranslationUnit
                         {
                             Key = key,
@@ -278,26 +340,24 @@ public class TranslationExtractor
 
             // --- 递归处理 ---
             // 【确保路径连续性】无论是否提取了当前节点，只要有子节点就递归
-            if (child.HasElements)
+            if (!child.HasElements) continue;
+            // 决定下一层是否允许提取 li（保留原有逻辑）
+            var nextAllowListExtraction = false;
+
+            if (hasReflectionData)
             {
-                // 决定下一层是否允许提取 li（保留原有逻辑）
-                bool nextAllowListExtraction = false;
-
-                if (hasReflectionData)
-                {
-                    // 如果反射确认它是可翻译字段（且不是黑名单），则允许下一层提取 li
-                    if (translatableFields!.Contains(tagName)) nextAllowListExtraction = true;
-                }
-                else
-                {
-                    // 无反射时，只有白名单列表（如 rulesStrings）才允许提取下一层 li
-                    if (IsSafeTextList(tagName)) nextAllowListExtraction = true;
-                }
-
-                string childTypeName = InferChildType(tagName, child);
-                // 【强制传递 fullPath】确保路径连续性
-                ExtractFromDef(child, childTypeName, defName, defType, fullPath, sourceFile, version, results, nextAllowListExtraction);
+                // 如果反射确认它是可翻译字段（且不是黑名单），则允许下一层提取 li
+                if (translatableFields!.Contains(tagName)) nextAllowListExtraction = true;
             }
+            else
+            {
+                // 无反射时，只有白名单列表（如 rulesStrings）才允许提取下一层 li
+                if (IsSafeTextList(tagName)) nextAllowListExtraction = true;
+            }
+
+            var childTypeName = InferChildType(tagName, child);
+            // 【强制传递 fullPath】确保路径连续性
+            ExtractFromDef(child, childTypeName, defName, defType, fullPath, sourceFile, version, results, nextAllowListExtraction);
         }
     }
 
@@ -307,7 +367,7 @@ public class TranslationExtractor
     /// [性能优化] 强制黑名单：这些字段绝对不翻译
     /// 使用预构建的哈希集合，查找速度从 O(n*m) 提升到 O(1)
     /// </summary>
-    private bool IsBlacklisted(string name)
+    private static bool IsBlacklisted(string name)
     {
         // 快速检查：完全匹配黑名单中的关键字（忽略大小写）
         if (BlacklistSet.Contains(name))
@@ -333,24 +393,19 @@ public class TranslationExtractor
     /// 【第二层：内容特征防御】检查内容是否像文件路径
     /// 防止某些 Modder 把图片路径命名为 <iconLabel> 从而骗过其他层
     /// </summary>
-    private bool IsPathLikeContent(string value)
+    private static bool IsPathLikeContent(string value)
     {
         if (string.IsNullOrWhiteSpace(value)) return true;
 
         // 检查是否包含路径分隔符
-        if (value.Contains("/") || value.Contains("\\")) return true;
+        if (value.Contains('/') || value.Contains('\\')) return true;
 
         // 检查是否以常见文件扩展名结尾
-        string lowerValue = value.ToLower();
-        if (lowerValue.EndsWith(".png") || lowerValue.EndsWith(".jpg") ||
-            lowerValue.EndsWith(".jpeg") || lowerValue.EndsWith(".gif") ||
-            lowerValue.EndsWith(".wav") || lowerValue.EndsWith(".mp3") ||
-            lowerValue.EndsWith(".xml") || lowerValue.EndsWith(".txt"))
-        {
-            return true;
-        }
-
-        return false;
+        var lowerValue = value.ToLower();
+        return lowerValue.EndsWith(".png") || lowerValue.EndsWith(".jpg") ||
+               lowerValue.EndsWith(".jpeg") || lowerValue.EndsWith(".gif") ||
+               lowerValue.EndsWith(".wav") || lowerValue.EndsWith(".mp3") ||
+               lowerValue.EndsWith(".xml") || lowerValue.EndsWith(".txt");
     }
 
     /// <summary>
@@ -399,11 +454,8 @@ public class TranslationExtractor
     private HashSet<string>? ResolveTypeFields(string typeName)
     {
         if (_reflectionMap.TryGetValue(typeName, out var fields)) return fields;
-        if (_shortNameMap.TryGetValue(typeName, out var fulls) && fulls.Count > 0)
-        {
-            if (_reflectionMap.TryGetValue(fulls[0], out fields)) return fields;
-        }
-        return null;
+        if (!_shortNameMap.TryGetValue(typeName, out var fulls) || fulls.Count <= 0) return null;
+        return _reflectionMap.TryGetValue(fulls[0], out fields) ? fields : null;
     }
 
     private string InferChildType(string tagName, XElement element)
