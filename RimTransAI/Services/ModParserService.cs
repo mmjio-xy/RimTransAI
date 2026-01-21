@@ -86,7 +86,7 @@ public class ModParserService
         Logger.Info($"找到 {totalXmlFiles} 个 XML 文件");
 
         // [性能优化] 步骤 2.5/4: 构建版本路径缓存
-        Logger.Info("步骤 2.5/4: 构建版本路径缓存...");
+        Logger.Debug("步骤 2.5/4: 构建版本路径缓存...");
         _versionCache = BuildVersionCache(modPath);
 
         // 优化：并行处理 XML 文件，使用 ConcurrentBag 线程安全收集结果
@@ -314,7 +314,7 @@ public class ModParserService
             }
         }
 
-        Logger.Info($"版本缓存构建完成: {cache.Count} 个文件");
+        Logger.Debug($"[性能优化] 版本缓存构建完成: {cache.Count} 个文件");
         return cache;
     }
 
@@ -480,6 +480,8 @@ public class ModParserService
     /// </summary>
     private List<TranslationItem> ScanKeyedFiles(string modPath)
     {
+        Logger.Info($"[Keyed 扫描] 开始扫描 Keyed 文件...");
+
         var items = new List<TranslationItem>();
         var keyedDirs = new List<(string path, string version)>();
 
@@ -487,6 +489,7 @@ public class ModParserService
         var rootKeyedDir = Path.Combine(modPath, "Languages", "English", "Keyed");
         if (Directory.Exists(rootKeyedDir))
         {
+            Logger.Debug($"[Keyed 扫描] 找到根目录 Keyed: {rootKeyedDir}");
             keyedDirs.Add((rootKeyedDir, ""));
         }
 
@@ -501,6 +504,7 @@ public class ModParserService
                 var versionKeyedDir = Path.Combine(versionDir, "Languages", "English", "Keyed");
                 if (Directory.Exists(versionKeyedDir))
                 {
+                    Logger.Debug($"[Keyed 扫描] 找到版本目录 Keyed: {versionKeyedDir}");
                     keyedDirs.Add((versionKeyedDir, dirName));
                 }
             }
@@ -518,13 +522,19 @@ public class ModParserService
         int processedFiles = 0;
         foreach (var (keyedDir, version) in keyedDirs)
         {
+            Logger.Debug($"[Keyed 扫描] 正在处理目录: {keyedDir} (版本: {version})");
             // 优化：使用 EnumerateFiles
             var xmlFiles = Directory.EnumerateFiles(keyedDir, "*.xml", SearchOption.AllDirectories);
             foreach (var file in xmlFiles)
             {
+                Logger.Debug($"[Keyed 扫描] 正在解析文件: {Path.GetFileName(file)}");
                 var fileItems = ParseKeyedFile(file, version);
                 items.AddRange(fileItems);
-                if (fileItems.Count > 0) processedFiles++;
+                if (fileItems.Count > 0)
+                {
+                    processedFiles++;
+                    Logger.Debug($"[Keyed 扫描] {Path.GetFileName(file)}: 提取 {fileItems.Count} 个翻译项");
+                }
             }
         }
 
