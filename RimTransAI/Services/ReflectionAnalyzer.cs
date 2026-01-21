@@ -28,6 +28,9 @@ public class ReflectionAnalyzer
     // 核心程序集
     private AssemblyDefinition? _coreAssembly;
 
+    // 性能优化：TypeReference 缓存，避免重复创建对象
+    private readonly Dictionary<string, TypeReference> _typeReferenceCache = new();
+
     /// <summary>
     /// 加载核心程序集 (Assembly-CSharp.dll)
     /// 模拟 RimWorld 启动时加载核心类型的过程
@@ -39,6 +42,9 @@ public class ReflectionAnalyzer
             Logger.Error($"核心程序集不存在: {corePath}");
             throw new FileNotFoundException($"核心程序集不存在: {corePath}");
         }
+
+        // [性能优化] 清理旧的 TypeReference 缓存
+        _typeReferenceCache.Clear();
 
         try
         {
@@ -398,7 +404,12 @@ public class ReflectionAnalyzer
         // 尝试从核心程序集解析
         try
         {
-            var typeRef = new TypeReference("", fullTypeName, _coreAssembly?.MainModule, _coreAssembly?.MainModule);
+            // [性能优化] 缓存 TypeReference，避免重复创建
+            if (!_typeReferenceCache.TryGetValue(fullTypeName, out var typeRef))
+            {
+                typeRef = new TypeReference("", fullTypeName, _coreAssembly?.MainModule, _coreAssembly?.MainModule);
+                _typeReferenceCache[fullTypeName] = typeRef;
+            }
             return typeRef.Resolve();
         }
         catch
