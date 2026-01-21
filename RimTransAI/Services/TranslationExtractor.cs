@@ -15,22 +15,97 @@ public class TranslationExtractor
     private readonly Dictionary<string, HashSet<string>> _reflectionMap;
     private readonly Dictionary<string, List<string>> _shortNameMap;
 
-    // 性能优化：预构建黑名单哈希集合，使用 OrdinalIgnoreCase 提升查找速度
+    /// <summary>
+    /// 【第一层：黑名单拦截】绝对黑名单
+    /// 这些是程序逻辑字段，翻译了会导致报错或找不到贴图，必须排除
+    /// </summary>
     private static readonly HashSet<string> BlacklistSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
     {
-        "path", "file", "texture", "icon", "graphic", "sound", "defname",
-        "tag", "setting", "config", "class", "worker", "link", "curve",
-        "size", "color", "shader", "mask", "effect", "cost", "stat",
+        // 身份标识
+        "defname", "def",
+
+        // 资源路径
+        "texpath", "texture", "texturepath", "iconpath", "shader",
+
+        // 音频资源
+        "sound", "sounddef", "soundcast", "soundhit", "soundmelee",
+
+        // 程序逻辑
+        "tag", "tags", "class", "workerclass", "driverclass", "linktype", "drawertype",
+
+        // 数据数值
+        "pathcost", "altitudelayer", "graphicdata",
+
+        // 其他技术字段
+        "path", "file", "icon", "graphic",
+        "setting", "config", "worker", "link", "curve",
+        "size", "color", "mask", "effect", "cost", "stat",
         "tex", "coordinates", "offset", "labelshort"
     };
 
     // 性能优化：预编译包含关键词（用于 Contains 检查）
     private static readonly string[] BlacklistKeywords =
     {
-        "path", "file", "texture", "icon", "graphic", "sound", "defname",
-        "tag", "setting", "config", "class", "worker", "link", "curve",
-        "size", "color", "shader", "mask", "effect", "cost", "stat",
+        // 身份标识
+        "defname", "def",
+
+        // 资源路径
+        "path", "texpath", "texture", "iconpath", "shader",
+
+        // 音频资源
+        "sound",
+
+        // 程序逻辑
+        "tag", "class", "worker", "driver", "drawer", "link",
+
+        // 数据数值
+        "pathcost", "altitudelayer", "graphic",
+
+        // 其他技术字段
+        "file", "icon", "graphic", "setting", "config", "link", "curve",
+        "size", "color", "mask", "effect", "cost", "stat",
         "tex", "coordinates", "offset"
+    };
+
+    /// <summary>
+    /// 【第三层：白名单放行】绝对白名单
+    /// RimWorld 官方定义的确切文本字段，必须精确匹配
+    /// </summary>
+    private static readonly HashSet<string> WhitelistSet = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+    {
+        // 基础信息
+        "label", "description",
+
+        // UI与交互
+        "jobstring", "verb", "labelnoun", "pawnlabel",
+
+        // 消息与日志
+        "reportstring", "baseinspectline", "deathmessage",
+
+        // 特定结构
+        "text", "lettertext", "letterlabel",
+
+        // 名称生成器
+        "rulesstrings", "slateref",
+
+        // 任务系统
+        "questnamerules", "questdescriptionrules",
+
+        // 其他（兼容现有逻辑）
+        "labelshort", "gerund", "message", "labelkey"
+    };
+
+    /// <summary>
+    /// 【第四层：启发式模糊匹配】智能后缀列表
+    /// 只要标签名以这些词结尾（EndWith），就视为可翻译文本
+    /// </summary>
+    private static readonly string[] SmartSuffixes =
+    {
+        "label",      // 例如 gerundLabel, skillLabel
+        "text",       // 例如 successText, failureText, introText
+        "desc",       // 例如 effectDesc, statDesc
+        "message",    // 例如 arrivalMessage
+        "string"      // 例如 formattedString
     };
 
     public TranslationExtractor(Dictionary<string, HashSet<string>> reflectionMap)
@@ -127,25 +202,41 @@ public class TranslationExtractor
             // --- 场景 A: 普通字段 ---
             if (tagName != "li")
             {
-                if (hasReflectionData && translatableFields!.Contains(tagName) && !child.HasElements)
+                // 【漏斗式筛选】四层过滤策略
+
+                // 第二层：内容特征防御（防止路径误判）
+                if (IsPathLikeContent(child.Value))
+                {
+                    continue; // 跳过路径类型的内容
+                }
+
+                // 第三层：白名单放行（ RimWorld 官方字段）
+                if (IsWhitelistedField(tagName))
+                {
+                    shouldExtract = true;
+                    reason = "Whitelist";
+                }
+                // 第四层：启发式模糊匹配（捕获 Mod 自定义字段）
+                else if (IsSmartSuffixMatch(tagName))
+                {
+                    shouldExtract = true;
+                    reason = "SmartSuffix";
+                }
+                // 反射确认（如果存在反射数据）
+                else if (hasReflectionData && translatableFields!.Contains(tagName) && !child.HasElements)
                 {
                     shouldExtract = true;
                     reason = "Reflect_Field";
-                }
-                else if (!hasReflectionData && IsStandardTranslationField(tagName) && !child.HasElements)
-                {
-                    shouldExtract = true;
-                    reason = "Heuristic_Field";
                 }
             }
             // --- 场景 B: 列表项 (li) ---
             else if (tagName == "li" && !child.HasElements)
             {
-                // 只有父级被标记为“允许提取列表”（是文本列表），才提取 li
                 if (allowListExtraction)
                 {
-                    // 额外检查：列表里的内容看起来是不是像路径？
-                    if (!IsLikePathOrId(child.Value)) 
+                    // 【漏斗式筛选】
+                    // 第二层：内容特征防御
+                    if (!IsPathLikeContent(child.Value))
                     {
                         shouldExtract = true;
                         reason = "Allowed_List_Item";
@@ -227,36 +318,70 @@ public class TranslationExtractor
     }
 
     /// <summary>
-    /// [新增] 检查内容是否像路径或ID (用于列表项的二次检查)
+    /// 【第二层：内容特征防御】检查内容是否像文件路径
+    /// 防止某些 Modder 把图片路径命名为 <iconLabel> 从而骗过其他层
     /// </summary>
-    private bool IsLikePathOrId(string value)
+    private bool IsPathLikeContent(string value)
     {
         if (string.IsNullOrWhiteSpace(value)) return true;
-        // 包含斜杠通常是路径
+
+        // 检查是否包含路径分隔符
         if (value.Contains("/") || value.Contains("\\")) return true;
-        // 只有字母数字且没有空格，很可能是 DefName ID，而不是自然语言
-        // (当然有些短单词也是，这里只做简单启发)
-        // if (!value.Contains(" ") && value.Length > 20) return true; 
+
+        // 检查是否以常见文件扩展名结尾
+        string lowerValue = value.ToLower();
+        if (lowerValue.EndsWith(".png") || lowerValue.EndsWith(".jpg") ||
+            lowerValue.EndsWith(".jpeg") || lowerValue.EndsWith(".gif") ||
+            lowerValue.EndsWith(".wav") || lowerValue.EndsWith(".mp3") ||
+            lowerValue.EndsWith(".xml") || lowerValue.EndsWith(".txt"))
+        {
+            return true;
+        }
+
         return false;
     }
 
-    private bool IsSafeTextList(string name)
+    /// <summary>
+    /// 【第三层：白名单放行】绝对白名单检查
+    /// RimWorld 官方定义的确切文本字段，必须精确匹配
+    /// </summary>
+    private bool IsWhitelistedField(string name)
     {
-        return name == "rulesStrings" || 
-               name == "descriptions" || 
-               name == "labels" || 
-               name == "messages" || 
-               name == "helpTexts" ||
-               name == "baseInspectLine";
+        return WhitelistSet.Contains(name);
     }
 
-    private bool IsStandardTranslationField(string name)
+    /// <summary>
+    /// 【第四层：启发式模糊匹配】智能后缀匹配
+    /// 检查字段名是否以特定后缀结尾（忽略大小写），用于捕获 Mod 自定义字段
+    /// </summary>
+    private bool IsSmartSuffixMatch(string name)
     {
-        return name == "label" || name == "labelShort" || name == "labelNoun" ||
-               name == "description" || name == "jobString" || name == "verb" ||
-               name == "gerund" || name == "text" || name == "message" ||
-               name == "letterLabel" || name == "letterText" || name == "deathMessage" ||
-               name == "labelKey" || name == "reportString";
+        if (string.IsNullOrEmpty(name)) return false;
+
+        string lowerName = name.ToLower();
+
+        foreach (var suffix in SmartSuffixes)
+        {
+            if (lowerName.EndsWith(suffix))
+            {
+                return true;
+            }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// 检查字段名是否为安全的文本列表（用于决定是否提取 li 列表项）
+    /// </summary>
+    private bool IsSafeTextList(string name)
+    {
+        return name.Equals("rulesstrings", StringComparison.OrdinalIgnoreCase) ||
+               name.Equals("descriptions", StringComparison.OrdinalIgnoreCase) ||
+               name.Equals("labels", StringComparison.OrdinalIgnoreCase) ||
+               name.Equals("messages", StringComparison.OrdinalIgnoreCase) ||
+               name.Equals("helptexts", StringComparison.OrdinalIgnoreCase) ||
+               name.Equals("baseinspectline", StringComparison.OrdinalIgnoreCase);
     }
 
     private HashSet<string>? ResolveTypeFields(string typeName)
