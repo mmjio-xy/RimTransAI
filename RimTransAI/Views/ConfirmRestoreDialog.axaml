@@ -1,0 +1,109 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:RimTransAI.ViewModels"
+        mc:Ignorable="d" d:DesignWidth="500" d:DesignHeight="300"
+        x:Class="RimTransAI.Views.ConfirmRestoreDialog"
+        x:DataType="vm:ConfirmRestoreDialogViewModel"
+        Title="确认恢复备份"
+        Width="500"
+        Height="300"
+        WindowStartupLocation="CenterOwner"
+        CanResize="False"
+        SystemDecorations="Full"
+        Background="{DynamicResource SemiColorBackground0}">
+
+    <Grid RowDefinitions="Auto, *, Auto" Margin="0,30,0,0">
+        <!-- 标题 -->
+        <TextBlock Grid.Row="0"
+                   Text="确认恢复备份"
+                   Classes="H4"
+                   Theme="{DynamicResource TitleTextBlock}"
+                   Margin="25,15,25,10"/>
+
+        <!-- 内容区域 -->
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="25,0,25,0">
+            <StackPanel Spacing="15">
+
+                <!-- 警告提示 -->
+                <Border Background="#FFF3E0"
+                        BorderBrush="#FFB74D"
+                        BorderThickness="1"
+                        CornerRadius="4"
+                        Padding="15">
+                    <StackPanel Spacing="8">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <Path Data="M12,2L1,21H23M12,6L19.53,19H4.47M11,10V14H13V10M11,16V18H13V16"
+                                  Fill="#E65100"
+                                  Width="20"
+                                  Height="20"
+                                  Stretch="Uniform"
+                                  VerticalAlignment="Center"/>
+                            <TextBlock Text="⚠️ 注意：恢复操作不可撤销！"
+                                       FontWeight="Bold"
+                                       Foreground="#E65100"
+                                       VerticalAlignment="Center"/>
+                        </StackPanel>
+                        <TextBlock Text="恢复将导致当前文件夹内的文件全部丢失，请谨慎操作。"
+                                   FontSize="13"
+                                   Foreground="#BF360C"
+                                   TextWrapping="Wrap"/>
+                    </StackPanel>
+                </Border>
+
+                <!-- 备份信息 -->
+                <StackPanel Spacing="8">
+                    <TextBlock Text="将要恢复的备份信息：" Classes="H6" Theme="{DynamicResource TitleTextBlock}"/>
+                    <Border BorderBrush="{DynamicResource SemiColorBorder}"
+                            BorderThickness="1"
+                            CornerRadius="4"
+                            Padding="12">
+                        <StackPanel Spacing="6">
+                            <Grid ColumnDefinitions="100, *">
+                                <TextBlock Grid.Column="0" Text="Mod 名称：" Classes="Tertiary"/>
+                                <TextBlock Grid.Column="1" Text="{Binding ModName}"/>
+                            </Grid>
+                            <Grid ColumnDefinitions="100, *">
+                                <TextBlock Grid.Column="0" Text="版本：" Classes="Tertiary"/>
+                                <TextBlock Grid.Column="1" Text="{Binding Version}"/>
+                            </Grid>
+                            <Grid ColumnDefinitions="100, *">
+                                <TextBlock Grid.Column="0" Text="目标语言：" Classes="Tertiary"/>
+                                <TextBlock Grid.Column="1" Text="{Binding TargetLanguage}"/>
+                            </Grid>
+                            <Grid ColumnDefinitions="100, *">
+                                <TextBlock Grid.Column="0" Text="备份文件：" Classes="Tertiary"/>
+                                <TextBlock Grid.Column="1" Text="{Binding BackupFileName}"/>
+                            </Grid>
+                            <Grid ColumnDefinitions="100, *">
+                                <TextBlock Grid.Column="0" Text="备份日期：" Classes="Tertiary"/>
+                                <TextBlock Grid.Column="1" Text="{Binding BackupDate}"/>
+                            </Grid>
+                            <Grid ColumnDefinitions="100, *">
+                                <TextBlock Grid.Column="0" Text="备份大小：" Classes="Tertiary"/>
+                                <TextBlock Grid.Column="1" Text="{Binding BackupSize}"/>
+                            </Grid>
+                        </StackPanel>
+                    </Border>
+                </StackPanel>
+
+            </StackPanel>
+        </ScrollViewer>
+
+        <!-- 底部按钮 -->
+        <Border Grid.Row="2" Padding="25,15,25,20">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="15">
+                <Button Content="取消"
+                        Command="{Binding CancelCommand}"
+                        Theme="{DynamicResource TertiaryButton}"
+                        Width="100"/>
+                <Button Content="确认恢复"
+                        Command="{Binding ConfirmCommand}"
+                        Theme="{DynamicResource SolidButton}"
+                        Classes="Danger"
+                        Width="100"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>

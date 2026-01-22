@@ -22,11 +22,8 @@ public class ThreadSafeProgressReporterTests
     public void Constructor_WithValidCallbacks_CreatesInstance()
     {
         // Arrange
-        var progressCallbackCalled = false;
-        var logCallbackCalled = false;
-
-        Action<TranslationProgress>? progressCallback = _ => progressCallbackCalled = true;
-        Action<string>? logCallback = _ => logCallbackCalled = true;
+        Action<TranslationProgress>? progressCallback = _ => { };
+        Action<string>? logCallback = _ => { };
 
         // Act
         var reporter = new ThreadSafeProgressReporter(progressCallback, logCallback);

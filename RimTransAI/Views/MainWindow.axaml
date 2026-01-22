@@ -51,23 +51,29 @@
                                           VerticalAlignment="Center"/>
                                     <TextBlock Text="参数设置" VerticalAlignment="Center"/>
                                 </StackPanel>
-                            </Button>
+                             </Button>
 
-                            <Separator Margin="0,5" />
+                             <Button Content="备份管理"
+                                     Command="{Binding OpenBackupManagerCommand}"
+                                     Theme="{DynamicResource TertiaryButton}"
+                                     HorizontalAlignment="Stretch"
+                                     Margin="0,5,0,0"/>
+
+                             <Separator Margin="0,5" />
 
                             <Button Content="1. 选择 Mod 文件夹" Command="{Binding SelectFolderCommand}"
                                     Classes="Primary" Theme="{DynamicResource SolidButton}"
                                     HorizontalAlignment="Stretch" />
 
-                            <StackPanel Spacing="5">
-                                <TextBlock Text="版本过滤" Classes="H6" Theme="{DynamicResource TitleTextBlock}" />
-                                <ComboBox ItemsSource="{Binding AvailableVersions}"
-                                          SelectedItem="{Binding SelectedVersion}"
-                                          HorizontalAlignment="Stretch"
-                                          PlaceholderText="等待扫描..." />
-                                <TextBlock Text="* 仅翻译列表可见内容" FontSize="12"
-                                           Foreground="{DynamicResource SemiColorText3}" />
-                            </StackPanel>
+                             <StackPanel Spacing="5">
+                                 <TextBlock Text="版本过滤" Classes="H6" Theme="{DynamicResource TitleTextBlock}" />
+                                 <ComboBox ItemsSource="{Binding AvailableVersions}"
+                                           SelectedItem="{Binding SelectedVersion}"
+                                           HorizontalAlignment="Stretch"
+                                           PlaceholderText="等待扫描..." />
+                                 <TextBlock Text="* 仅翻译列表可见内容" FontSize="12"
+                                            Foreground="{DynamicResource SemiColorText3}" />
+                             </StackPanel>
 
                             <Separator Margin="0,5" />
 

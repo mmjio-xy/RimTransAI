@@ -39,6 +39,7 @@ public partial class App : Application
             // 注册 ViewModels
             collection.AddTransient<MainWindowViewModel>();
             collection.AddTransient<SettingsViewModel>();
+            collection.AddTransient<BackupManagerViewModel>();
 
             // 这里注册 Services
             collection.AddSingleton<ReflectionAnalyzer>();
@@ -50,6 +51,8 @@ public partial class App : Application
             collection.AddSingleton<ConfigService>();
             // 注册 Mod 信息服务
             collection.AddSingleton<ModInfoService>();
+            // 注册备份服务
+            collection.AddSingleton<BackupService>();
 
             Services = collection.BuildServiceProvider();
             Logger.Info("依赖注入配置完成");
