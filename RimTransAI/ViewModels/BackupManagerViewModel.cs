@@ -23,6 +23,13 @@ public partial class BackupManagerViewModel : ViewModelBase
     [ObservableProperty] private string _currentModPath = "";
     [ObservableProperty] private string _targetLanguage = "";
 
+    // ========== 搜索和排序相关属性 ==========
+    [ObservableProperty] private string _searchText = "";
+    [ObservableProperty] private int _searchTypeIndex = 0;  // 0: Mod名称, 1: PackageId
+    [ObservableProperty] private bool _isSortDescending = true;
+
+    public string SortButtonText => IsSortDescending ? "最新优先" : "最早优先";
+
     public Window? CurrentWindow { get; set; }
 
     public BackupManagerViewModel()
@@ -187,16 +194,78 @@ public partial class BackupManagerViewModel : ViewModelBase
         LoadBackups();
     }
 
+    partial void OnSearchTextChanged(string value)
+    {
+        LoadBackups();
+    }
+
+    partial void OnSearchTypeIndexChanged(int value)
+    {
+        if (!string.IsNullOrWhiteSpace(SearchText))
+        {
+            LoadBackups();
+        }
+    }
+
+    partial void OnIsSortDescendingChanged(bool value)
+    {
+        OnPropertyChanged(nameof(SortButtonText));
+        LoadBackups();
+    }
+
+    [RelayCommand]
+    public void ToggleSortDirection()
+    {
+        IsSortDescending = !IsSortDescending;
+    }
+
+    [RelayCommand]
+    public void SortAscending()
+    {
+        IsSortDescending = false;
+    }
+
+    [RelayCommand]
+    public void SortDescending()
+    {
+        IsSortDescending = true;
+    }
+
+    [RelayCommand]
+    public void ClearSearch()
+    {
+        SearchText = "";
+    }
+
     private void LoadBackups()
     {
         Backups.Clear();
 
+        // 1. 获取原始数据（保留现有 PackageId 过滤）
         string? packageIdFilter = IsOnlyCurrentMod && !string.IsNullOrEmpty(CurrentPackageId)
             ? CurrentPackageId
             : null;
 
         var backups = _backupService.GetAllBackups(packageIdFilter);
 
+        // 2. 应用搜索过滤
+        if (!string.IsNullOrWhiteSpace(SearchText))
+        {
+            var searchLower = SearchText.Trim().ToLowerInvariant();
+            backups = SearchTypeIndex switch
+            {
+                0 => backups.Where(b => b.ModName.ToLowerInvariant().Contains(searchLower)).ToList(),
+                1 => backups.Where(b => b.PackageId.ToLowerInvariant().Contains(searchLower)).ToList(),
+                _ => backups
+            };
+        }
+
+        // 3. 应用排序
+        backups = IsSortDescending
+            ? backups.OrderByDescending(b => b.CreationTime).ToList()
+            : backups.OrderBy(b => b.CreationTime).ToList();
+
+        // 4. 填充集合
         foreach (var backup in backups)
         {
             Backups.Add(new BackupInfoViewModel(backup));

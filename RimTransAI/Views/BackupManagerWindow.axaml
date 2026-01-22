@@ -29,6 +29,23 @@
          <Style Selector="DataGridRow.missing:pointerover">
              <Setter Property="Background" Value="#55FF6B6B"/>
          </Style>
+         <!-- 排序按钮样式：无边框透明背景 -->
+         <Style Selector="Button.sort-btn">
+             <Setter Property="Background" Value="Transparent"/>
+             <Setter Property="BorderThickness" Value="0"/>
+             <Setter Property="Padding" Value="2"/>
+             <Setter Property="MinWidth" Value="16"/>
+             <Setter Property="MinHeight" Value="16"/>
+             <Setter Property="Opacity" Value="0.4"/>
+         </Style>
+         <Style Selector="Button.sort-btn:pointerover">
+             <Setter Property="Background" Value="Transparent"/>
+             <Setter Property="Opacity" Value="0.7"/>
+         </Style>
+         <Style Selector="Button.sort-btn.active">
+             <Setter Property="Opacity" Value="1"/>
+             <Setter Property="Foreground" Value="{DynamicResource SemiColorPrimary}"/>
+         </Style>
      </Window.Styles>
 
      <Grid RowDefinitions="Auto, Auto, *, Auto" Margin="0,30,0,0">
@@ -41,21 +58,47 @@
 
         <!-- 工具栏 -->
         <Border Grid.Row="1" BorderBrush="{DynamicResource SemiColorBorder}" BorderThickness="0,0,0,1" Padding="25,10,25,10">
-            <StackPanel Orientation="Horizontal" Spacing="15">
-                <Button Content="刷新列表"
-                        Command="{Binding RefreshCommand}"
-                        Theme="{DynamicResource OutlineButton}"
-                        Classes="Primary"
-                        Width="100"/>
-                <Button Content="打开备份目录"
-                        Command="{Binding OpenBackupDirectoryCommand}"
-                        Theme="{DynamicResource OutlineButton}"
-                        Width="120"/>
-                <Separator Width="1"/>
-                <CheckBox Content="仅显示当前 Mod"
-                          IsChecked="{Binding IsOnlyCurrentMod}"
-                          VerticalAlignment="Center"/>
-            </StackPanel>
+            <Grid ColumnDefinitions="Auto, Auto, *, Auto">
+                <!-- 左侧：原有按钮 -->
+                <StackPanel Grid.Column="0" Orientation="Horizontal" Spacing="15">
+                    <Button Content="刷新列表"
+                            Command="{Binding RefreshCommand}"
+                            Theme="{DynamicResource OutlineButton}"
+                            Classes="Primary"
+                            Width="100"/>
+                    <Button Content="打开备份目录"
+                            Command="{Binding OpenBackupDirectoryCommand}"
+                            Theme="{DynamicResource OutlineButton}"
+                            Width="120"/>
+                    <Separator Width="1"/>
+                    <CheckBox Content="仅显示当前 Mod"
+                              IsChecked="{Binding IsOnlyCurrentMod}"
+                              VerticalAlignment="Center"/>
+                </StackPanel>
+
+                <!-- 中间：搜索区域 -->
+                <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="8" Margin="20,0,0,0">
+                    <ComboBox SelectedIndex="{Binding SearchTypeIndex}"
+                              Width="110" VerticalAlignment="Center">
+                        <ComboBoxItem>Mod 名称</ComboBoxItem>
+                        <ComboBoxItem>PackageId</ComboBoxItem>
+                    </ComboBox>
+                    <Grid VerticalAlignment="Center">
+                        <TextBox Text="{Binding SearchText}"
+                                 Watermark="输入搜索关键词..."
+                                 Width="200"
+                                 Padding="8,6,28,6"/>
+                        <Button Content="✕" FontSize="10"
+                                Classes="sort-btn"
+                                Command="{Binding ClearSearchCommand}"
+                                HorizontalAlignment="Right"
+                                VerticalAlignment="Center"
+                                Margin="0,0,6,0"
+                                IsVisible="{Binding SearchText, Converter={x:Static StringConverters.IsNotNullOrEmpty}}"
+                                ToolTip.Tip="清空搜索"/>
+                    </Grid>
+                </StackPanel>
+            </Grid>
         </Border>
 
         <!-- 备份列表 -->
@@ -74,28 +117,53 @@
             <DataGrid.Columns>
                 <DataGridTextColumn Header="Mod 名称" Binding="{Binding ModName}" Width="2*"/>
                 <DataGridTextColumn Header="版本" Binding="{Binding VersionDisplay}" Width="100"/>
-                <DataGridTextColumn Header="备份时间" Binding="{Binding CreationTimeDisplay}" Width="150"/>
+                <!-- 备份时间列：带排序按钮 -->
+                <DataGridTemplateColumn Width="170">
+                    <DataGridTemplateColumn.Header>
+                        <StackPanel Orientation="Horizontal" Spacing="3">
+                            <TextBlock Text="备份时间" VerticalAlignment="Center"/>
+                            <StackPanel Orientation="Horizontal" Spacing="0" VerticalAlignment="Center">
+                                <Button Content="▲" FontSize="9"
+                                        Classes="sort-btn"
+                                        Classes.active="{Binding !#BackupGrid.((vm:BackupManagerViewModel)Tag).IsSortDescending}"
+                                        Command="{Binding #BackupGrid.((vm:BackupManagerViewModel)Tag).SortAscendingCommand}"
+                                        ToolTip.Tip="升序（最早优先）"/>
+                                <Button Content="▼" FontSize="9"
+                                        Classes="sort-btn"
+                                        Classes.active="{Binding #BackupGrid.((vm:BackupManagerViewModel)Tag).IsSortDescending}"
+                                        Command="{Binding #BackupGrid.((vm:BackupManagerViewModel)Tag).SortDescendingCommand}"
+                                        ToolTip.Tip="降序（最新优先）"/>
+                            </StackPanel>
+                        </StackPanel>
+                    </DataGridTemplateColumn.Header>
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <TextBlock Text="{Binding CreationTimeDisplay}" VerticalAlignment="Center" Margin="5,0"/>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
                 <DataGridTextColumn Header="文件大小" Binding="{Binding FileSizeDisplay}" Width="100"/>
-                  <DataGridTemplateColumn Header="操作" Width="180">
-                      <DataGridTemplateColumn.CellTemplate>
-                          <DataTemplate>
-                              <StackPanel Orientation="Horizontal" Spacing="5" HorizontalAlignment="Center">
-                                  <Button Content="恢复"
-                                          Command="{Binding #BackupGrid.((vm:BackupManagerViewModel)Tag).RestoreBackupCommand}"
-                                          CommandParameter="{Binding}"
-                                          Theme="{DynamicResource OutlineButton}"
-                                          Classes="Success"
-                                          HorizontalAlignment="Stretch"/>
-                                  <Button Content="删除"
-                                          Command="{Binding #BackupGrid.((vm:BackupManagerViewModel)Tag).DeleteSelectedBackupCommand}"
-                                          CommandParameter="{Binding}"
-                                          Theme="{DynamicResource OutlineButton}"
-                                          Classes="Danger"
-                                          HorizontalAlignment="Stretch"/>
-                             </StackPanel>
-                         </DataTemplate>
-                     </DataGridTemplateColumn.CellTemplate>
-                 </DataGridTemplateColumn>
+                <DataGridTemplateColumn Width="180">
+                    <DataGridTemplateColumn.Header>
+                        <TextBlock Text="操作" HorizontalAlignment="Center"/>
+                    </DataGridTemplateColumn.Header>
+                    <DataGridTemplateColumn.CellTemplate>
+                        <DataTemplate>
+                            <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Center">
+                                <Button Content="恢复"
+                                        Command="{Binding #BackupGrid.((vm:BackupManagerViewModel)Tag).RestoreBackupCommand}"
+                                        CommandParameter="{Binding}"
+                                        Theme="{DynamicResource OutlineButton}"
+                                        Classes="Success"/>
+                                <Button Content="删除"
+                                        Command="{Binding #BackupGrid.((vm:BackupManagerViewModel)Tag).DeleteSelectedBackupCommand}"
+                                        CommandParameter="{Binding}"
+                                        Theme="{DynamicResource OutlineButton}"
+                                        Classes="Danger"/>
+                            </StackPanel>
+                        </DataTemplate>
+                    </DataGridTemplateColumn.CellTemplate>
+                </DataGridTemplateColumn>
             </DataGrid.Columns>
         </DataGrid>
 
