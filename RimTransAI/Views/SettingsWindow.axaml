@@ -283,6 +283,84 @@
                 </ScrollViewer>
             </TabItem>
 
+            <!-- 备份设置选项卡 -->
+            <TabItem>
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <Path Data="M19,20H5V9H19M19,3H18V1H16V3H8V1H6V3H5C3.89,3 3,3.9 3,5V19A2,2 0 0,0 5,21H19A2,2 0 0,0 21,19V5A2,2 0 0,0 19,3M12,12H15V14H12V17H10V14H7V12H10V9H12V12Z"
+                                   Fill="{DynamicResource SemiColorText0}"
+                                   Width="16"
+                                   Height="16"
+                                   Stretch="Uniform"
+                                   VerticalAlignment="Center"/>
+                        <TextBlock Text="备份设置" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </TabItem.Header>
+
+                <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="5,15,5,5">
+                    <StackPanel Spacing="20">
+
+                        <!-- 启用自动备份 -->
+                        <StackPanel Spacing="8">
+                            <Grid ColumnDefinitions="*, Auto">
+                                <StackPanel Grid.Column="0">
+                                    <TextBlock Text="启用自动备份" Classes="Tertiary"/>
+                                    <TextBlock Text="保存汉化文件后自动创建备份"
+                                               FontSize="12" Foreground="{DynamicResource SemiColorText3}"/>
+                                </StackPanel>
+                                <ToggleSwitch Grid.Column="1"
+                                              IsChecked="{Binding EnableAutoBackup}"
+                                              VerticalAlignment="Center"/>
+                            </Grid>
+                        </StackPanel>
+
+                        <!-- 备份存储目录 -->
+                        <StackPanel Spacing="8" IsVisible="{Binding EnableAutoBackup}">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="备份存储目录" Classes="Tertiary"/>
+                                <TextBlock Text=" (留空则使用默认)" FontSize="12" Foreground="{DynamicResource SemiColorText3}"/>
+                            </StackPanel>
+                            <Grid ColumnDefinitions="*, Auto">
+                                <TextBox Grid.Column="0"
+                                         Text="{Binding BackupDirectory}"
+                                         Watermark="留空则使用: %AppData%/RimTransAI/Backups"
+                                         Margin="0,0,10,0"/>
+                                <Button Grid.Column="1"
+                                        Content="浏览..."
+                                        Command="{Binding SelectBackupDirectoryCommand}"
+                                        Theme="{DynamicResource OutlineButton}"/>
+                            </Grid>
+                        </StackPanel>
+
+                        <!-- 最大备份数量 -->
+                        <StackPanel Spacing="8" IsVisible="{Binding EnableAutoBackup}">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="最大备份数量" Classes="Tertiary"/>
+                                <TextBlock Text=" (0 表示不限制)" FontSize="12" Foreground="{DynamicResource SemiColorText3}"/>
+                            </StackPanel>
+                            <NumericUpDown Value="{Binding MaxBackupCount}"
+                                          Minimum="0"
+                                          Maximum="100"
+                                          Increment="1"
+                                          FormatString="N0"
+                                          HorizontalAlignment="Left"
+                                          Width="120"/>
+                        </StackPanel>
+
+                        <!-- 压缩级别 -->
+                        <StackPanel Spacing="8" IsVisible="{Binding EnableAutoBackup}">
+                            <TextBlock Text="压缩级别" Classes="Tertiary"/>
+                            <ComboBox SelectedIndex="{Binding BackupCompressionLevel}" HorizontalAlignment="Left" Width="200">
+                                <ComboBoxItem>最快压缩 (体积较大)</ComboBoxItem>
+                                <ComboBoxItem>平衡压缩 (推荐)</ComboBoxItem>
+                                <ComboBoxItem>最小体积 (压缩较慢)</ComboBoxItem>
+                            </ComboBox>
+                        </StackPanel>
+
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
         </TabControl>
 
         <!-- 底部按钮区域 -->

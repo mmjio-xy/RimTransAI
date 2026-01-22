@@ -1,0 +1,113 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+          xmlns:vm="using:RimTransAI.ViewModels"
+        mc:Ignorable="d" d:DesignWidth="900" d:DesignHeight="600"
+        x:Class="RimTransAI.Views.BackupManagerWindow"
+        x:Name="WindowRoot"
+        x:DataType="vm:BackupManagerViewModel"
+        Title="备份管理"
+        Width="900"
+        Height="600"
+        WindowStartupLocation="CenterOwner"
+        CanResize="True"
+        MinWidth="800"
+        MinHeight="500"
+        SystemDecorations="Full"
+        Background="{DynamicResource SemiColorBackground0}">
+
+     <Window.Resources>
+         <vm:BackupManagerViewModel x:Key="ViewModel"/>
+     </Window.Resources>
+
+     <Window.Styles>
+         <!-- 备份文件不存在时显示红色背景 -->
+         <Style Selector="DataGridRow.missing">
+             <Setter Property="Background" Value="#33FF6B6B"/>
+         </Style>
+         <Style Selector="DataGridRow.missing:pointerover">
+             <Setter Property="Background" Value="#55FF6B6B"/>
+         </Style>
+     </Window.Styles>
+
+     <Grid RowDefinitions="Auto, Auto, *, Auto" Margin="0,30,0,0">
+        <!-- 标题 -->
+        <TextBlock Grid.Row="0"
+                   Text="备份管理"
+                   Classes="H4"
+                   Theme="{DynamicResource TitleTextBlock}"
+                   Margin="25,15,25,10"/>
+
+        <!-- 工具栏 -->
+        <Border Grid.Row="1" BorderBrush="{DynamicResource SemiColorBorder}" BorderThickness="0,0,0,1" Padding="25,10,25,10">
+            <StackPanel Orientation="Horizontal" Spacing="15">
+                <Button Content="刷新列表"
+                        Command="{Binding RefreshCommand}"
+                        Theme="{DynamicResource OutlineButton}"
+                        Classes="Primary"
+                        Width="100"/>
+                <Button Content="打开备份目录"
+                        Command="{Binding OpenBackupDirectoryCommand}"
+                        Theme="{DynamicResource OutlineButton}"
+                        Width="120"/>
+                <Separator Width="1"/>
+                <CheckBox Content="仅显示当前 Mod"
+                          IsChecked="{Binding IsOnlyCurrentMod}"
+                          VerticalAlignment="Center"/>
+            </StackPanel>
+        </Border>
+
+        <!-- 备份列表 -->
+         <DataGrid Grid.Row="2"
+                   x:Name="BackupGrid"
+                   ItemsSource="{Binding Backups}"
+                   Tag="{Binding}"
+                   IsReadOnly="True"
+                   CanUserResizeColumns="True"
+                   GridLinesVisibility="All"
+                   BorderThickness="0"
+                   Background="{DynamicResource SemiColorBackground0}"
+                   AutoGenerateColumns="False"
+                   Margin="25,10,25,10">
+
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="Mod 名称" Binding="{Binding ModName}" Width="2*"/>
+                <DataGridTextColumn Header="版本" Binding="{Binding VersionDisplay}" Width="100"/>
+                <DataGridTextColumn Header="备份时间" Binding="{Binding CreationTimeDisplay}" Width="150"/>
+                <DataGridTextColumn Header="文件大小" Binding="{Binding FileSizeDisplay}" Width="100"/>
+                  <DataGridTemplateColumn Header="操作" Width="180">
+                      <DataGridTemplateColumn.CellTemplate>
+                          <DataTemplate>
+                              <StackPanel Orientation="Horizontal" Spacing="5" HorizontalAlignment="Center">
+                                  <Button Content="恢复"
+                                          Command="{Binding #BackupGrid.((vm:BackupManagerViewModel)Tag).RestoreBackupCommand}"
+                                          CommandParameter="{Binding}"
+                                          Theme="{DynamicResource OutlineButton}"
+                                          Classes="Success"
+                                          HorizontalAlignment="Stretch"/>
+                                  <Button Content="删除"
+                                          Command="{Binding #BackupGrid.((vm:BackupManagerViewModel)Tag).DeleteSelectedBackupCommand}"
+                                          CommandParameter="{Binding}"
+                                          Theme="{DynamicResource OutlineButton}"
+                                          Classes="Danger"
+                                          HorizontalAlignment="Stretch"/>
+                             </StackPanel>
+                         </DataTemplate>
+                     </DataGridTemplateColumn.CellTemplate>
+                 </DataGridTemplateColumn>
+            </DataGrid.Columns>
+        </DataGrid>
+
+        <!-- 底部按钮 -->
+        <Border Grid.Row="3" Padding="25,15,25,20">
+            <StackPanel Orientation="Horizontal" HorizontalAlignment="Right">
+                <Button Content="关闭"
+                        Command="{Binding CloseCommand}"
+                        Theme="{DynamicResource SolidButton}"
+                        Classes="Primary"
+                        Width="100"/>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>

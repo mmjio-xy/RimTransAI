@@ -25,4 +25,25 @@ public class AppConfig
     public bool EnableMultiThreadTranslation { get; set; } = false; // 是否启用多线程翻译
     public int MaxThreads { get; set; } = 4; // 最大并发线程数（1-10）
     public int ThreadIntervalMs { get; set; } = 100; // 并发请求间隔（毫秒）
+
+    // ========== 备份配置 ==========
+    /// <summary>
+    /// 是否启用自动备份
+    /// </summary>
+    public bool EnableAutoBackup { get; set; } = true;
+
+    /// <summary>
+    /// 备份存储目录（空则使用默认 AppData/RimTransAI/Backups）
+    /// </summary>
+    public string BackupDirectory { get; set; } = "";
+
+    /// <summary>
+    /// 最大备份数量（0 表示不限制）
+    /// </summary>
+    public int MaxBackupCount { get; set; } = 10;
+
+    /// <summary>
+    /// 备份压缩级别（0: Fastest, 1: Optimal, 2: SmallestSize）
+    /// </summary>
+    public int BackupCompressionLevel { get; set; } = 1;
 }

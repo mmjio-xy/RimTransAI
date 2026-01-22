@@ -45,6 +45,12 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty] private int _maxThreads = 4;
     [ObservableProperty] private int _threadIntervalMs = 100;
 
+    // ========== 备份配置 ==========
+    [ObservableProperty] private bool _enableAutoBackup = true;
+    [ObservableProperty] private string _backupDirectory = "";
+    [ObservableProperty] private int _maxBackupCount = 10;
+    [ObservableProperty] private int _backupCompressionLevel = 1;  // 0: Fastest, 1: Optimal, 2: SmallestSize
+
     // 验证错误信息
     [ObservableProperty] private string _validationError = string.Empty;
 
@@ -156,6 +162,12 @@ public partial class SettingsViewModel : ViewModelBase
         EnableMultiThreadTranslation = cfg.EnableMultiThreadTranslation;
         MaxThreads = Math.Clamp(cfg.MaxThreads, 1, 10);
         ThreadIntervalMs = Math.Max(0, cfg.ThreadIntervalMs);
+
+        // 加载备份配置
+        EnableAutoBackup = cfg.EnableAutoBackup;
+        BackupDirectory = cfg.BackupDirectory ?? "";
+        MaxBackupCount = Math.Max(1, cfg.MaxBackupCount);
+        BackupCompressionLevel = Math.Clamp(cfg.BackupCompressionLevel, 0, 2);
     }
 
     [RelayCommand]
@@ -214,7 +226,12 @@ public partial class SettingsViewModel : ViewModelBase
             PromptTemplateName = templateName,
             EnableMultiThreadTranslation = EnableMultiThreadTranslation,
             MaxThreads = Math.Clamp(MaxThreads, 1, 10),
-            ThreadIntervalMs = Math.Max(0, ThreadIntervalMs)
+            ThreadIntervalMs = Math.Max(0, ThreadIntervalMs),
+            // 备份配置
+            EnableAutoBackup = EnableAutoBackup,
+            BackupDirectory = BackupDirectory,
+            MaxBackupCount = Math.Max(1, MaxBackupCount),
+            BackupCompressionLevel = Math.Clamp(BackupCompressionLevel, 0, 2)
         };
 
         // 保存到磁盘
@@ -264,6 +281,26 @@ public partial class SettingsViewModel : ViewModelBase
         if (files.Count > 0)
         {
             AssemblyCSharpPath = files[0].Path.LocalPath;
+        }
+    }
+
+    /// <summary>
+    /// 选择备份目录
+    /// </summary>
+    [RelayCommand]
+    private async Task SelectBackupDirectory()
+    {
+        if (CurrentWindow == null) return;
+
+        var folders = await CurrentWindow.StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        {
+            Title = "选择备份存储目录",
+            AllowMultiple = false
+        });
+
+        if (folders.Count > 0)
+        {
+            BackupDirectory = folders[0].Path.LocalPath;
         }
     }
 }

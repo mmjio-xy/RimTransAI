@@ -28,12 +28,19 @@ public partial class MainWindowViewModel : ViewModelBase
     private readonly ModParserService _modParserService;
     private readonly BatchingService _batchingService; // 智能分批服务
     private readonly ModInfoService _modInfoService; // Mod 信息服务
+    private readonly BackupService _backupService; // 备份服务
 
     // 1. 数据源：存放扫描到的所有原始数据
     private List<TranslationItem> _allItems = new();
 
     // 内部状态：记录当前 Mod 路径
     private string _currentModPath = string.Empty;
+
+    // 内部状态：记录当前 Mod 的 PackageId
+    private string? _currentPackageId;
+
+    // 内部状态：记录当前 Mod 的名称
+    private string? _currentModName;
 
     // 翻译取消令牌源
     private CancellationTokenSource? _translationCts;
@@ -79,6 +86,7 @@ public partial class MainWindowViewModel : ViewModelBase
         _fileGeneratorService = new FileGeneratorService();
         _batchingService = new BatchingService();
         _modInfoService = new ModInfoService();
+        _backupService = new BackupService(_configService);
 
         // 初始化版本列表，避免设计器报错
         AvailableVersions.Add("全部");
@@ -91,7 +99,8 @@ public partial class MainWindowViewModel : ViewModelBase
         FileGeneratorService fileGeneratorService,
         ConfigService configService,
         BatchingService batchingService,
-        ModInfoService modInfoService)
+        ModInfoService modInfoService,
+        BackupService backupService)
     {
         _modParserService = modParserService;
         _llmService = llmService;
@@ -99,6 +108,7 @@ public partial class MainWindowViewModel : ViewModelBase
         _configService = configService;
         _batchingService = batchingService;
         _modInfoService = modInfoService;
+        _backupService = backupService;
     }
 
     // 2. 视图源：绑定到 DataGrid
@@ -145,6 +155,45 @@ public partial class MainWindowViewModel : ViewModelBase
 
         // 窗口关闭后提示
         LogOutput += "\n设置已更新。";
+    }
+
+    /// <summary>
+    /// 打开备份管理窗口
+    /// </summary>
+    [RelayCommand]
+    private async Task OpenBackupManager()
+    {
+        // 获取当前主窗口
+        var topLevel = Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop
+            ? desktop.MainWindow
+            : null;
+
+        if (topLevel == null) return;
+
+        // 从 App.Services 中获取 BackupManagerViewModel 的新实例
+        var app = (App)Application.Current!;
+        if (app.Services == null) return;
+
+        var backupManagerVm = app.Services.GetRequiredService<BackupManagerViewModel>();
+
+        // 设置恢复备份需要的上下文信息
+        backupManagerVm.CurrentModPath = _currentModPath;
+        backupManagerVm.CurrentPackageId = _currentPackageId ?? "";
+        backupManagerVm.TargetLanguage = _configService.CurrentConfig.TargetLanguage;
+
+        // 加载备份列表（必须在设置 CurrentPackageId 之后调用）
+        backupManagerVm.Refresh();
+
+        var backupManagerWindow = new BackupManagerWindow
+        {
+            DataContext = backupManagerVm
+        };
+
+        // 设置 CurrentWindow 以便 ViewModel 可以关闭窗口
+        backupManagerVm.CurrentWindow = backupManagerWindow;
+
+        // 模态显示备份管理窗口
+        await backupManagerWindow.ShowDialog(topLevel);
     }
 
     /// <summary>
@@ -353,84 +402,87 @@ public partial class MainWindowViewModel : ViewModelBase
             {
                 // 单线程翻译（原有逻辑）
                 for (int i = 0; i < batches.Count; i++)
-            {
-                // 检查是否请求取消
-                if (cancellationToken.IsCancellationRequested)
                 {
-                    LogOutput += $"\n翻译已停止，完成 {i}/{totalBatches} 批次";
-                    break;
-                }
+                    // 检查是否请求取消
+                    if (cancellationToken.IsCancellationRequested)
+                    {
+                        LogOutput += $"\n翻译已停止，完成 {i}/{totalBatches} 批次";
+                        break;
+                    }
 
-                var batch = batches[i];
-                int batchTokens = batchResult.BatchTokenCounts[i];
+                    var batch = batches[i];
+                    int batchTokens = batchResult.BatchTokenCounts[i];
 
-                // 3. 构建发送给 AI 的字典
-                var batchDict = batch.ToDictionary(
-                    group => group.Key,
-                    group => group.Key
-                );
-
-                try
-                {
-                    // 调用 LLM（传递自定义提示词，如果启用）
-                    var results = await _llmService.TranslateBatchAsync(
-                        config.ApiKey,
-                        batchDict,
-                        config.ApiUrl,
-                        config.TargetModel,
-                        config.TargetLanguage,
-                        config.UseCustomPrompt && !string.IsNullOrWhiteSpace(config.CustomPrompt) ? config.CustomPrompt : null
+                    // 3. 构建发送给 AI 的字典
+                    var batchDict = batch.ToDictionary(
+                        group => group.Key,
+                        group => group.Key
                     );
 
-                    // 4. 结果回填 (关键步骤)
-                    foreach (var group in batch)
+                    try
                     {
-                        // 使用原文作为 Key 查找翻译结果
-                        var originalText = group.Key;
+                        // 调用 LLM（传递自定义提示词，如果启用）
+                        var results = await _llmService.TranslateBatchAsync(
+                            config.ApiKey,
+                            batchDict,
+                            config.ApiUrl,
+                            config.TargetModel,
+                            config.TargetLanguage,
+                            config.UseCustomPrompt && !string.IsNullOrWhiteSpace(config.CustomPrompt)
+                                ? config.CustomPrompt
+                                : null
+                        );
 
-                        // 检查 AI 是否返回了翻译
-                        if (results.TryGetValue(originalText, out string? translatedText) &&
-                            !string.IsNullOrWhiteSpace(translatedText))
+                        // 4. 结果回填 (关键步骤)
+                        foreach (var group in batch)
                         {
-                            // 广播：把翻译结果赋给该组下的【所有】条目
-                            foreach (var item in group)
+                            // 使用原文作为 Key 查找翻译结果
+                            var originalText = group.Key;
+
+                            // 检查 AI 是否返回了翻译
+                            if (results.TryGetValue(originalText, out string? translatedText) &&
+                                !string.IsNullOrWhiteSpace(translatedText))
                             {
-                                item.TranslatedText = translatedText;
-                                item.Status = "已翻译";
+                                // 广播：把翻译结果赋给该组下的【所有】条目
+                                foreach (var item in group)
+                                {
+                                    item.TranslatedText = translatedText;
+                                    item.Status = "已翻译";
+                                }
                             }
-                        }
-                        else
-                        {
-                            // AI 没返回或跳过
-                            foreach (var item in group)
+                            else
                             {
-                                // 如果原来没翻译，标记为跳过；如果原来有翻译，保持不变
-                                if (string.IsNullOrEmpty(item.TranslatedText))
-                                    item.Status = "AI跳过";
+                                // AI 没返回或跳过
+                                foreach (var item in group)
+                                {
+                                    // 如果原来没翻译，标记为跳过；如果原来有翻译，保持不变
+                                    if (string.IsNullOrEmpty(item.TranslatedText))
+                                        item.Status = "AI跳过";
+                                }
                             }
                         }
                     }
-                }
-                catch (Exception ex)
-                {
-                    LogOutput += $"\n批次 {i + 1} 失败: {ex.Message}";
-                    // 标记该批次所有条目为出错
-                    foreach (var group in batch)
+                    catch (Exception ex)
                     {
-                        foreach (var item in group) item.Status = "出错";
+                        LogOutput += $"\n批次 {i + 1} 失败: {ex.Message}";
+                        // 标记该批次所有条目为出错
+                        foreach (var group in batch)
+                        {
+                            foreach (var item in group) item.Status = "出错";
+                        }
                     }
+
+                    processedGroups += batch.Count;
+                    // 累加本批次覆盖的条目数
+                    coveredItems += batch.Sum(g => g.Count());
+
+                    // 进度条按"处理的唯一文本组数"计算
+                    ProgressValue = (double)processedGroups / totalGroups * 100;
+
+                    // 日志显示优化 - 显示批次和 Token 信息
+                    LogOutput =
+                        $"翻译进度: {i + 1}/{totalBatches} 批次 | {processedGroups}/{totalGroups} 文本 (~{batchTokens} tokens)";
                 }
-
-                processedGroups += batch.Count;
-                // 累加本批次覆盖的条目数
-                coveredItems += batch.Sum(g => g.Count());
-
-                // 进度条按"处理的唯一文本组数"计算
-                ProgressValue = (double)processedGroups / totalGroups * 100;
-
-                // 日志显示优化 - 显示批次和 Token 信息
-                LogOutput = $"翻译进度: {i + 1}/{totalBatches} 批次 | {processedGroups}/{totalGroups} 文本 (~{batchTokens} tokens)";
-            }
             }
 
             // 区分正常完成和取消完成
@@ -524,7 +576,8 @@ public partial class MainWindowViewModel : ViewModelBase
         ProgressValue = (double)progress.ProcessedBatches / progress.TotalBatches * 100;
 
         // 更新日志显示
-        LogOutput = $"多线程翻译进度: {progress.ProcessedBatches}/{progress.TotalBatches} 批次 | 正在运行 {progress.ActiveThreads} 个线程";
+        LogOutput =
+            $"多线程翻译进度: {progress.ProcessedBatches}/{progress.TotalBatches} 批次 | 正在运行 {progress.ActiveThreads} 个线程";
     }
 
     /// <summary>
@@ -545,12 +598,36 @@ public partial class MainWindowViewModel : ViewModelBase
             int count =
                 await Task.Run(() => _fileGeneratorService.GenerateFiles(_currentModPath, targetLang, _allItems));
             LogOutput = $"保存成功！已在 Languages/{targetLang} 下生成 {count} 个文件。";
+
+            // ===== 自动备份 =====
+            await Task.Run(() =>
+            {
+                string version = string.IsNullOrEmpty(SelectedVersion) || SelectedVersion == "全部"
+                    ? ""
+                    : SelectedVersion;
+
+                string packageId = _currentPackageId ?? "UnknownMod";
+                string modName = _currentModName ?? "UnknownMod";
+
+                var backupPath = _backupService.BackupTranslationFolder(
+                    _currentModPath,
+                    modName,
+                    packageId,
+                    version,
+                    targetLang);
+
+                if (backupPath != null)
+                {
+                    LogOutput = $"{LogOutput}\n已自动创建备份。";
+                }
+            });
         }
         catch (Exception ex)
         {
             LogOutput = $"保存失败: {ex.Message}";
         }
     }
+
 
     /// <summary>
     /// 加载 Mod 信息并显示浮动面板
@@ -562,6 +639,10 @@ public partial class MainWindowViewModel : ViewModelBase
             var modInfo = _modInfoService.LoadModInfo(modFolderPath);
             if (modInfo != null)
             {
+                // 记录当前 Mod 的 PackageId 和名称
+                _currentPackageId = modInfo.PackageId;
+                _currentModName = modInfo.Name;
+
                 // 创建 ModInfoViewModel 并加载数据
                 ModInfoViewModel = new ModInfoViewModel();
                 ModInfoViewModel.LoadFromModInfo(modInfo);
