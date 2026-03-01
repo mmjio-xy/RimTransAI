@@ -172,8 +172,6 @@ jobs:
         with:
           name: RimTransAI-${{ steps.metadata.outputs.version }}-${{ steps.metadata.outputs.short_sha }}
           path: |
-            ./publish/native/*
-            ./publish/lite/*
             ./${{ steps.metadata.outputs.native_zip_name }}
             ./${{ steps.metadata.outputs.native_zip_name }}.sha256
             ./${{ steps.metadata.outputs.lite_zip_name }}
