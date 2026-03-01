@@ -10,8 +10,9 @@
 
     <!-- Native AOT 配置 -->
     <PublishAot>true</PublishAot>
+    <PublishSingleFile>true</PublishSingleFile>
     <StripSymbols>true</StripSymbols>
-    <TrimMode>full</TrimMode>
+    <TrimMode>partial</TrimMode>
     <IsAotCompatible>true</IsAotCompatible>
     <IncludeNativeLibrariesForSelfExtract>true</IncludeNativeLibrariesForSelfExtract>
 

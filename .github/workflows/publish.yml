@@ -9,8 +9,11 @@ on:
 permissions:
   contents: write
 
+concurrency:
+  group: release-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
 jobs:
-  # Job 1: 运行测试
   test:
     name: Run Tests
     runs-on: windows-latest
@@ -19,23 +22,34 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # 获取完整历史用于生成 changelog
+          fetch-depth: 0
 
       - name: Setup .NET 9
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 9.0.x
+          cache: true
+          cache-dependency-path: |
+            global.json
+            **/*.csproj
+            **/packages.lock.json
 
       - name: Restore dependencies
-        run: dotnet restore
+        run: dotnet restore RimTransAI.sln --locked-mode
 
       - name: Build
-        run: dotnet build --no-restore -c Release
+        run: dotnet build RimTransAI.sln --no-restore -c Release /p:ContinuousIntegrationBuild=true
 
       - name: Run tests
-        run: dotnet test --no-build -c Release --verbosity normal
+        run: dotnet test tests/RimTransAI.Tests/RimTransAI.Tests.csproj --no-build -c Release --verbosity normal --logger "trx;LogFileName=test-results.trx" --results-directory ./TestResults
 
-  # Job 2: 构建和发布（依赖测试成功）
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-test-results
+          path: TestResults/**/*.trx
+          retention-days: 5
+
   build-and-release:
     name: Build and Release
     runs-on: windows-latest
@@ -45,82 +59,139 @@ jobs:
       - name: Checkout code
         uses: actions/checkout@v4
         with:
-          fetch-depth: 0  # 获取完整历史用于生成 changelog
+          fetch-depth: 0
 
       - name: Setup .NET 9
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 9.0.x
+          cache: true
+          cache-dependency-path: |
+            global.json
+            **/*.csproj
+            **/packages.lock.json
 
-      - name: Restore Dependencies
-        run: dotnet restore ./RimTransAI/RimTransAI.csproj
+      - name: Restore dependencies
+        run: dotnet restore ./RimTransAI/RimTransAI.csproj --locked-mode
 
-      - name: Get Tag Version
-        id: version
+      - name: Build release metadata
+        id: metadata
         shell: pwsh
         run: |
-          # 从推送的 tag 中获取版本号
           $version = "$env:GITHUB_REF_NAME"
-          echo "version=$version" >> $env:GITHUB_OUTPUT
+          if ([string]::IsNullOrWhiteSpace($version)) {
+            $version = "manual-$env:GITHUB_RUN_NUMBER"
+          }
 
-      - name: Generate Changelog
+          $shortSha = (git rev-parse --short HEAD).Trim()
+          $nativeZipName = "RimTransAI-$version-win-x64-native-$shortSha.zip"
+          $liteZipName = "RimTransAI-$version-win-x64-lite-$shortSha.zip"
+
+          "version=$version" >> $env:GITHUB_OUTPUT
+          "short_sha=$shortSha" >> $env:GITHUB_OUTPUT
+          "native_zip_name=$nativeZipName" >> $env:GITHUB_OUTPUT
+          "lite_zip_name=$liteZipName" >> $env:GITHUB_OUTPUT
+
+      - name: Generate changelog from tags
+        if: startsWith(github.ref, 'refs/tags/')
         id: changelog
         shell: pwsh
         run: |
-          # 获取当前版本号
-          $currentTag = "$env:GITHUB_REF_NAME"
+          $currentTag = "${{ steps.metadata.outputs.version }}"
+          $previousTag = git tag --list "v*" --sort=-creatordate | Where-Object { $_ -ne $currentTag } | Select-Object -First 1
 
-          # 获取上一个标签（排除当前标签）
-          $previousTag = $(git describe --tags --abbrev=0 HEAD^ 2>$null)
-
-          # 生成 changelog 头部
-          $changelog = "## 🎉 $currentTag`n`n"
-
+          $header = "## $currentTag"
           if ($previousTag) {
-            # 如果存在上一个标签，获取两个标签之间的提交
-            $changelog += "### 📝 自 $previousTag 以来的更改：`n`n"
-            $commits = git log $previousTag..$currentTag --pretty=format:"- %s" --no-merges
+            $subHeader = "### Commits from $previousTag to $currentTag"
+            $commitLines = git log "$previousTag..$currentTag" --reverse --pretty=format:"- %h %s (%an, %ad)" --date=short
           } else {
-            # 如果不存在上一个标签（首次发布），获取最近 20 条提交
-            $changelog += "### 📝 首次发布（最近 20 条提交）：`n`n"
-            $commits = git log --pretty=format:"- %s" --no-merges -n 20
+            $subHeader = "### Commits in $currentTag (no previous tag found)"
+            $commitLines = git log "$currentTag" --reverse --pretty=format:"- %h %s (%an, %ad)" --date=short
           }
 
-          # 添加提交列表
-          $changelog += $commits
+          if (-not $commitLines) {
+            $commitLines = "- No commits found in the selected tag range"
+          }
 
-          # 将 changelog 写入文件
-          $changelog | Out-File -Encoding UTF8 -FilePath changelog.txt
+          @(
+            $header
+            ""
+            $subHeader
+            ""
+            $commitLines
+            ""
+            "### 下载说明"
+            "- 如果没有 .NET 9.0 框架运行时，请下载原生编译版。"
+            "- 如果有 .NET 9.0 框架运行时，请下载 Lite 版本。"
+          ) | Out-File -Encoding UTF8 -FilePath changelog.txt
 
-          # 输出 changelog 内容
           Get-Content changelog.txt
 
-      - name: Publish Native AOT
-        # 将命令合并为一行，避免 PowerShell 换行符错误
-        run: dotnet publish ./RimTransAI/RimTransAI.csproj -c Release -r win-x64 --self-contained true -p:PublishAot=true -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:TrimMode=partial -p:StripSymbols=true -p:DebugType=None -p:DebugSymbols=false -o ./publish
+      - name: Publish Native (Self-Contained Single File)
+        run: dotnet publish ./RimTransAI/RimTransAI.csproj -c Release -r win-x64 --self-contained true -p:PublishAot=false -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=None -p:DebugSymbols=false -p:TreatWarningsAsErrors=false -o ./publish/native
 
-      - name: Compress for Release
+      - name: Publish Lite (Framework-Dependent)
+        run: dotnet publish ./RimTransAI/RimTransAI.csproj -c Release -r win-x64 --self-contained false -p:PublishAot=false -p:PublishSingleFile=true -p:IncludeNativeLibrariesForSelfExtract=true -p:DebugType=None -p:DebugSymbols=false -p:TreatWarningsAsErrors=false -o ./publish/lite
+
+      - name: Compress packages for release
+        shell: pwsh
         run: |
-          cd ./publish
-          # 再次清理可能残留的 PDB
-          Get-ChildItem -Filter *.pdb | Remove-Item -Force -ErrorAction SilentlyContinue
-          # 打包所有文件
-          Compress-Archive -Path * -DestinationPath ../RimTransAI-Win64.zip
+          $nativeZipName = "${{ steps.metadata.outputs.native_zip_name }}"
+          $liteZipName = "${{ steps.metadata.outputs.lite_zip_name }}"
 
-      - name: Upload Artifact
+          if (Test-Path $nativeZipName) {
+            Remove-Item $nativeZipName -Force
+          }
+          if (Test-Path $liteZipName) {
+            Remove-Item $liteZipName -Force
+          }
+
+          Get-ChildItem ./publish/native -Filter *.pdb -File | Remove-Item -Force -ErrorAction SilentlyContinue
+          Get-ChildItem ./publish/lite -Filter *.pdb -File | Remove-Item -Force -ErrorAction SilentlyContinue
+
+          Compress-Archive -Path ./publish/native/* -DestinationPath "./$nativeZipName"
+          Compress-Archive -Path ./publish/lite/* -DestinationPath "./$liteZipName"
+
+      - name: Generate SHA256
+        shell: pwsh
+        run: |
+          $nativeZipName = "${{ steps.metadata.outputs.native_zip_name }}"
+          $liteZipName = "${{ steps.metadata.outputs.lite_zip_name }}"
+
+          $nativeHash = (Get-FileHash "./$nativeZipName" -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$nativeHash  $nativeZipName" | Out-File -Encoding ascii -FilePath "./$nativeZipName.sha256"
+
+          $liteHash = (Get-FileHash "./$liteZipName" -Algorithm SHA256).Hash.ToLowerInvariant()
+          "$liteHash  $liteZipName" | Out-File -Encoding ascii -FilePath "./$liteZipName.sha256"
+
+          Get-Content "./$nativeZipName.sha256"
+          Get-Content "./$liteZipName.sha256"
+
+      - name: Upload artifact bundle
         uses: actions/upload-artifact@v4
         with:
-          name: RimTransAI-Artifact
-          path: ./publish/*
+          name: RimTransAI-${{ steps.metadata.outputs.version }}-${{ steps.metadata.outputs.short_sha }}
+          path: |
+            ./publish/native/*
+            ./publish/lite/*
+            ./${{ steps.metadata.outputs.native_zip_name }}
+            ./${{ steps.metadata.outputs.native_zip_name }}.sha256
+            ./${{ steps.metadata.outputs.lite_zip_name }}
+            ./${{ steps.metadata.outputs.lite_zip_name }}.sha256
           retention-days: 5
 
-      - name: Create Release
-        uses: softprops/action-gh-release@v1
+      - name: Create release
+        if: startsWith(github.ref, 'refs/tags/')
+        uses: softprops/action-gh-release@v2
         with:
-          files: RimTransAI-Win64.zip
+          files: |
+            ${{ steps.metadata.outputs.native_zip_name }}
+            ${{ steps.metadata.outputs.native_zip_name }}.sha256
+            ${{ steps.metadata.outputs.lite_zip_name }}
+            ${{ steps.metadata.outputs.lite_zip_name }}.sha256
           draft: false
           prerelease: false
+          name: RimTransAI ${{ steps.metadata.outputs.version }}
           body_path: changelog.txt
-          name: RimTransAI ${{ steps.version.outputs.version }}
           generate_release_notes: false
           token: ${{ secrets.GITHUB_TOKEN }}

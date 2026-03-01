@@ -2,10 +2,14 @@ name: Test
 
 on:
   push:
-    branches: [dev]
+    branches: [dev, main]
   pull_request:
-    branches: [dev]
+    branches: [dev, main]
   workflow_dispatch:
+
+concurrency:
+  group: test-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
 
 jobs:
   test:
@@ -20,19 +24,31 @@ jobs:
         uses: actions/setup-dotnet@v4
         with:
           dotnet-version: 9.0.x
+          cache: true
+          cache-dependency-path: |
+            global.json
+            **/*.csproj
+            **/packages.lock.json
 
       - name: Restore dependencies
-        run: dotnet restore
+        run: dotnet restore RimTransAI.sln --locked-mode
 
       - name: Build
-        run: dotnet build --no-restore -c Release
+        run: dotnet build RimTransAI.sln --no-restore -c Release /p:ContinuousIntegrationBuild=true
 
       - name: Run tests
-        run: dotnet test --no-build -c Release --verbosity normal --collect:"XPlat Code Coverage"
+        run: dotnet test tests/RimTransAI.Tests/RimTransAI.Tests.csproj --no-build -c Release --verbosity normal --collect:"XPlat Code Coverage" --logger "trx;LogFileName=test-results.trx" --results-directory ./TestResults
+
+      - name: Upload test results
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-results
+          path: TestResults/**/*.trx
+          retention-days: 5
 
       - name: Upload coverage report
         uses: actions/upload-artifact@v4
         with:
           name: coverage-report
-          path: "**/coverage.cobertura.xml"
+          path: TestResults/**/coverage.cobertura.xml
           retention-days: 5
