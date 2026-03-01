@@ -51,6 +51,8 @@ public partial class App : Application
             collection.AddSingleton<ConfigService>();
             // 注册 Mod 信息服务
             collection.AddSingleton<ModInfoService>();
+            collection.AddSingleton<IconCatalogService>();
+            collection.AddSingleton<WorkspaceService>();
             // 注册备份服务
             collection.AddSingleton<BackupService>();
 

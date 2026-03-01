@@ -1,5 +1,6 @@
-﻿using System;
+using System;
 using System.IO;
+using System.Linq;
 using System.Text.Json;
 using RimTransAI.Models;
 
@@ -30,6 +31,33 @@ public class ConfigService
                 //传入 AppJsonContext.Default.AppConfig
                 CurrentConfig = JsonSerializer.Deserialize(json, AppJsonContext.Default.AppConfig)
                                 ?? new AppConfig();
+
+                // 兼容历史配置：清理旧版本序列化异常导致的空来源项，并补齐默认值
+                if (CurrentConfig.ModSourceFolders != null)
+                {
+                    CurrentConfig.ModSourceFolders = CurrentConfig.ModSourceFolders
+                        .Where(x => !string.IsNullOrWhiteSpace(x.FolderPath))
+                        .Select(x =>
+                        {
+                            if (string.IsNullOrWhiteSpace(x.Id))
+                            {
+                                x.Id = Guid.NewGuid().ToString("N");
+                            }
+
+                            if (string.IsNullOrWhiteSpace(x.IconKey))
+                            {
+                                x.IconKey = "Folder";
+                            }
+
+                            if (string.IsNullOrWhiteSpace(x.DisplayName))
+                            {
+                                x.DisplayName = Path.GetFileName(x.FolderPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+                            }
+
+                            return x;
+                        })
+                        .ToList();
+                }
                 return;
             }
             catch (JsonException ex)
@@ -66,3 +94,4 @@ public class ConfigService
         }
     }
 }
+

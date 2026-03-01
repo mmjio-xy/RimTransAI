@@ -1,204 +1,327 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:RimTransAI.ViewModels"
-        xmlns:views="using:RimTransAI.Views"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
-        mc:Ignorable="d" d:DesignWidth="1100" d:DesignHeight="900"
+        xmlns:iconMaterial="clr-namespace:IconPacks.Avalonia.Material;assembly=IconPacks.Avalonia.Material"
+        mc:Ignorable="d" d:DesignWidth="1400" d:DesignHeight="700"
         x:Class="RimTransAI.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
         Title="RimTrans AI - 边缘世界智能汉化"
+        Width="1400"
+        Height="700"
         ExtendClientAreaToDecorationsHint="True"
         Icon="avares://RimTransAI/Assets/RimTrans.ico"
         SystemDecorations="Full"
         Background="{DynamicResource SemiColorBackground0}">
 
-    <!-- 根容器：主内容 + 浮动层 -->
-    <Grid>
-        <!-- 主内容区域 -->
-        <Grid ColumnDefinitions="300, *" Margin="0,30,0,0">
+    <Grid RowDefinitions="30,*,Auto">
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,*" Margin="12,4,12,0">
+            <TextBlock Grid.Column="0"
+                       Text="{Binding AppDisplayTitle}"
+                       FontSize="12"
+                       FontWeight="SemiBold"
+                       VerticalAlignment="Center"
+                       Foreground="{DynamicResource SemiColorText2}"/>
+            <StackPanel Grid.Column="1"
+                        Orientation="Horizontal"
+                        Spacing="8"
+                        HorizontalAlignment="Right"
+                        Margin="0,0,140,0">
+                <Button Command="{Binding OpenSettingsCommand}"
+                        Theme="{x:Null}"
+                        Width="20"
+                        Height="20"
+                        Padding="0"
+                        Background="Transparent"
+                        BorderBrush="Transparent"
+                        BorderThickness="0"
+                        ToolTip.Tip="程序设置">
+                    <iconMaterial:PackIconMaterial Kind="CogOutline"
+                                                   Width="16"
+                                                   Height="16"
+                                                   Foreground="{DynamicResource SemiColorText2}"/>
+                </Button>
+                <Button Command="{Binding OpenBackupManagerCommand}"
+                        Theme="{x:Null}"
+                        Width="20"
+                        Height="20"
+                        Padding="0"
+                        Background="Transparent"
+                        BorderBrush="Transparent"
+                        BorderThickness="0"
+                        ToolTip.Tip="备份管理">
+                    <iconMaterial:PackIconMaterial Kind="ArchiveOutline"
+                                                   Width="16"
+                                                   Height="16"
+                                                   Foreground="{DynamicResource SemiColorText2}"/>
+                </Button>
+            </StackPanel>
+        </Grid>
 
-            <Border Grid.Column="0" Background="{DynamicResource SemiColorBackground0}"
+        <Grid Grid.Row="1" ColumnDefinitions="27*,26*,47*" Margin="12,8,12,8">
+
+            <!-- 左栏：Mod 信息 -->
+            <Border Grid.Column="0"
+                    Background="{DynamicResource SemiColorBackground0}"
                     BorderBrush="{DynamicResource SemiColorBorder}"
-                    BorderThickness="0,0,1,0"
-                    Padding="20,10,20,20">
-
-                <Grid RowDefinitions="Auto, *, Auto">
-
-                    <StackPanel Grid.Row="0" Spacing="5" Margin="0,5,0,20">
-                        <TextBlock Text="RimTrans AI"
-                                   Classes="H3"
-                                   Theme="{DynamicResource TitleTextBlock}"
-                                   FontWeight="Bold"
-                                   IsHitTestVisible="False" />
-                        <TextBlock Text="RimWorld Mod 智能汉化"
-                                   Classes="Tertiary"
-                                   FontSize="12"
-                                   IsHitTestVisible="False" />
-                    </StackPanel>
-
-                    <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto">
-                        <StackPanel Spacing="15" Margin="0,0,10,0">
-                            <Button Command="{Binding OpenSettingsCommand}"
-                                    Theme="{DynamicResource TertiaryButton}" HorizontalAlignment="Stretch">
-                                <StackPanel Orientation="Horizontal" Spacing="8">
-                                    <Path Data="M19.14,12.94c0.04-0.3,0.06-0.61,0.06-0.94c0-0.32-0.02-0.64-0.07-0.94l2.03-1.58c0.18-0.14,0.23-0.41,0.12-0.61l-1.92-3.32c-0.12-0.22-0.37-0.29-0.59-0.22l-2.39,0.96c-0.5-0.38-1.03-0.7-1.62-0.94L14.4,2.81c-0.04-0.24-0.24-0.41-0.48-0.41h-3.84c-0.24,0-0.43,0.17-0.47,0.41L9.25,5.35C8.66,5.59,8.12,5.92,7.63,6.29L5.24,5.33c-0.22-0.08-0.47,0-0.59,0.22L2.74,8.87C2.62,9.08,2.66,9.34,2.86,9.48l2.03,1.58C4.84,11.36,4.8,11.69,4.8,12s0.02,0.64,0.07,0.94l-2.03,1.58c-0.18,0.14-0.23,0.41-0.12,0.61l1.92,3.32c0.12,0.22,0.37,0.29,0.59,0.22l2.39-0.96c0.5,0.38,1.03,0.7,1.62,0.94l0.36,2.54c0.05,0.24,0.24,0.41,0.48,0.41h3.84c0.24,0,0.44-0.17,0.47-0.41l0.36-2.54c0.59-0.24,1.13-0.56,1.62-0.94l2.39,0.96c0.22,0.08,0.47,0,0.59-0.22l1.92-3.32c0.12-0.22,0.07-0.47-0.12-0.61L19.14,12.94z M12,15.6c-1.98,0-3.6-1.62-3.6-3.6s1.62-3.6,3.6-3.6s3.6,1.62,3.6,3.6S13.98,15.6,12,15.6z"
-                                          Fill="{DynamicResource SemiColorText0}"
-                                          Width="16"
-                                          Height="16"
-                                          Stretch="Uniform"
-                                          VerticalAlignment="Center"/>
-                                    <TextBlock Text="参数设置" VerticalAlignment="Center"/>
-                                </StackPanel>
-                             </Button>
-
-                             <Button Content="备份管理"
-                                     Command="{Binding OpenBackupManagerCommand}"
-                                     Theme="{DynamicResource TertiaryButton}"
-                                     HorizontalAlignment="Stretch"
-                                     Margin="0,5,0,0"/>
-
-                             <Separator Margin="0,5" />
-
-                            <Button Content="1. 选择 Mod 文件夹" Command="{Binding SelectFolderCommand}"
-                                    Classes="Primary" Theme="{DynamicResource SolidButton}"
-                                    HorizontalAlignment="Stretch" />
-
-                             <StackPanel Spacing="5">
-                                 <TextBlock Text="版本过滤" Classes="H6" Theme="{DynamicResource TitleTextBlock}" />
-                                 <ComboBox ItemsSource="{Binding AvailableVersions}"
-                                           SelectedItem="{Binding SelectedVersion}"
-                                           HorizontalAlignment="Stretch"
-                                           PlaceholderText="等待扫描..." />
-                                 <TextBlock Text="* 仅翻译列表可见内容" FontSize="12"
-                                            Foreground="{DynamicResource SemiColorText3}" />
-                             </StackPanel>
-
-                            <Separator Margin="0,5" />
-
-                            <Button Content="2. 开始 AI 翻译" Command="{Binding StartTranslationCommand}"
-                                    IsVisible="{Binding !IsTranslating}"
-                                    Classes="Success" Theme="{DynamicResource SolidButton}"
-                                    HorizontalAlignment="Stretch" />
-
-                            <Button Content="⏹ 停止翻译" Command="{Binding StopTranslationCommand}"
-                                    IsVisible="{Binding IsTranslating}"
-                                    Classes="Danger" Theme="{DynamicResource SolidButton}"
-                                    HorizontalAlignment="Stretch" />
-
-                            <Button Content="3. 保存汉化文件" Command="{Binding SaveFilesCommand}"
-                                    Classes="Warning" Theme="{DynamicResource SolidButton}"
-                                    HorizontalAlignment="Stretch" />
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="14"
+                    Margin="0,0,10,0">
+                <ScrollViewer VerticalScrollBarVisibility="Auto">
+                    <StackPanel Spacing="12">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <iconMaterial:PackIconMaterial Kind="InformationOutline"
+                                                           Width="18"
+                                                           Height="18"
+                                                           Foreground="{DynamicResource SemiColorText1}"/>
+                            <TextBlock Text="Mod 信息" Classes="H5" Theme="{DynamicResource TitleTextBlock}"/>
                         </StackPanel>
-                    </ScrollViewer>
 
-                    <StackPanel Grid.Row="2" Margin="0,20,0,0">
-                        <TextBlock Text="运行日志" Classes="Tertiary" Margin="0,0,0,8" />
-
-                        <Border Height="100"
-                                Background="{DynamicResource SemiColorFill0}"
-                                BorderBrush="{DynamicResource SemiColorBorder}"
-                                BorderThickness="1"
-                                CornerRadius="4">
-
-                            <ScrollViewer VerticalScrollBarVisibility="Auto">
-                                <TextBlock Text="{Binding LogOutput}" TextWrapping="Wrap"
-                                           Foreground="{DynamicResource SemiColorText2}" FontSize="12" />
-                            </ScrollViewer>
+                        <Border CornerRadius="8" Background="{DynamicResource SemiColorFill0}" Padding="8" ClipToBounds="True">
+                            <Image Source="{Binding ModInfoViewModel.PreviewImage}" Height="170" Stretch="UniformToFill"/>
                         </Border>
+
+                        <TextBlock Text="{Binding ModInfoViewModel.Name}" FontSize="18" FontWeight="Bold" TextWrapping="Wrap"/>
+                        <TextBlock Text="{Binding ModInfoViewModel.Author, StringFormat='作者: {0}'}"
+                                   Foreground="{DynamicResource SemiColorText2}"
+                                   TextWrapping="Wrap"/>
+                        <StackPanel Spacing="2">
+                            <TextBlock Text="简介:" FontSize="12" Foreground="{DynamicResource SemiColorText3}"/>
+                            <TextBlock x:Name="ModDescriptionTextBlock"
+                                       TextWrapping="Wrap"
+                                       Foreground="{DynamicResource SemiColorText2}"/>
+                        </StackPanel>
+                        <StackPanel Spacing="2">
+                            <TextBlock Text="包ID:" FontSize="12" Foreground="{DynamicResource SemiColorText3}"/>
+                            <TextBlock Text="{Binding ModInfoViewModel.PackageId}"
+                                       FontFamily="Consolas,Courier New"
+                                       Foreground="{DynamicResource SemiColorText2}"
+                                       TextWrapping="NoWrap"
+                                       TextTrimming="CharacterEllipsis"
+                                       ToolTip.Tip="{Binding ModInfoViewModel.PackageId}"/>
+                        </StackPanel>
+
+                        <StackPanel Spacing="8">
+                            <TextBlock Text="Mod目录:" FontSize="12" Foreground="{DynamicResource SemiColorText3}"/>
+                            <Button Command="{Binding ModInfoViewModel.OpenFolderCommand}"
+                                    Theme="{x:Null}"
+                                    Background="Transparent"
+                                    BorderBrush="Transparent"
+                                    BorderThickness="0"
+                                    Padding="0"
+                                    HorizontalAlignment="Stretch"
+                                    HorizontalContentAlignment="Stretch"
+                                    ToolTip.Tip="点击打开目录">
+                                <TextBlock Text="{Binding ModInfoViewModel.FolderPath}"
+                                           Foreground="#2E6E9E"
+                                           TextWrapping="NoWrap"
+                                           TextTrimming="CharacterEllipsis"
+                                           ToolTip.Tip="{Binding ModInfoViewModel.FolderPath}"/>
+                            </Button>
+
+                            <TextBlock Text="项目主页:" FontSize="12" Foreground="{DynamicResource SemiColorText3}"/>
+                            <Button Command="{Binding ModInfoViewModel.OpenUrlCommand}"
+                                    Theme="{x:Null}"
+                                    Background="Transparent"
+                                    BorderBrush="Transparent"
+                                    BorderThickness="0"
+                                    Padding="0"
+                                    HorizontalAlignment="Stretch"
+                                    HorizontalContentAlignment="Stretch"
+                                    IsVisible="{Binding ModInfoViewModel.HasUrl}">
+                                <ToolTip.Tip>
+                                    <Border MaxWidth="760" Padding="4">
+                                        <TextBlock Text="{Binding ModInfoViewModel.ResolvedUrl}"
+                                                   TextWrapping="Wrap"/>
+                                    </Border>
+                                </ToolTip.Tip>
+                                <TextBlock Text="{Binding ModInfoViewModel.ResolvedUrl}"
+                                           Foreground="#2E6E9E"
+                                           TextWrapping="NoWrap"
+                                           TextTrimming="CharacterEllipsis"/>
+                            </Button>
+                            <TextBlock Text="(无项目主页)"
+                                       Foreground="{DynamicResource SemiColorText3}"
+                                       IsVisible="{Binding !ModInfoViewModel.HasUrl}"/>
+                        </StackPanel>
                     </StackPanel>
+                </ScrollViewer>
+            </Border>
+
+            <!-- 中栏：Mod 列表 -->
+            <Border Grid.Column="1"
+                    Background="{DynamicResource SemiColorBackground0}"
+                    BorderBrush="{DynamicResource SemiColorBorder}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="14"
+                    Margin="0,0,10,0">
+                <Grid RowDefinitions="Auto,Auto,*">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <StackPanel Orientation="Horizontal" Spacing="8">
+                            <iconMaterial:PackIconMaterial Kind="ViewList" Width="18" Height="18" Foreground="{DynamicResource SemiColorText1}"/>
+                            <TextBlock Text="Mod 列表" Classes="H5" Theme="{DynamicResource TitleTextBlock}"/>
+                        </StackPanel>
+                        <Button Grid.Column="1"
+                                Command="{Binding RefreshWorkspaceCommand}"
+                                Theme="{x:Null}"
+                                Width="20"
+                                Height="20"
+                                Padding="0"
+                                Background="Transparent"
+                                BorderBrush="Transparent"
+                                BorderThickness="0"
+                                ToolTip.Tip="刷新来源">
+                            <iconMaterial:PackIconMaterial Kind="Refresh" Width="16" Height="16" Foreground="{DynamicResource SemiColorText2}"/>
+                        </Button>
+                    </Grid>
+
+                    <Grid Grid.Row="1" ColumnDefinitions="Auto,*" Margin="0,10,0,10">
+                        <ComboBox Grid.Column="0" Width="110" SelectedIndex="{Binding ModSearchModeIndex}">
+                            <ComboBoxItem>按Mod名称</ComboBoxItem>
+                            <ComboBoxItem>按包名</ComboBoxItem>
+                        </ComboBox>
+                        <TextBox Grid.Column="1"
+                                 Text="{Binding ModSearchText}"
+                                 Watermark="输入关键词搜索"
+                                 Margin="8,0,0,0"
+                                 HorizontalAlignment="Stretch"/>
+                    </Grid>
+
+                    <ListBox Grid.Row="2"
+                             ItemsSource="{Binding WorkspaceMods}"
+                             SelectedItem="{Binding SelectedMod}">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Border Padding="8" Margin="0,0,0,6" BorderBrush="{DynamicResource SemiColorBorder}" BorderThickness="1" CornerRadius="6">
+                                    <Grid ColumnDefinitions="Auto,*,Auto">
+                                        <iconMaterial:PackIconMaterial Grid.Column="0"
+                                                                       Kind="{Binding SourceIconKind}"
+                                                                       Width="18"
+                                                                       Height="18"
+                                                                       VerticalAlignment="Center"
+                                                                       Foreground="{DynamicResource SemiColorPrimary}"/>
+                                        <StackPanel Grid.Column="1" Spacing="2">
+                                            <TextBlock Text="{Binding Name}" FontWeight="SemiBold" TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Text="{Binding SourceDisplayName}" FontSize="11" Foreground="{DynamicResource SemiColorText3}" TextTrimming="CharacterEllipsis"/>
+                                            <TextBlock Text="{Binding PackageId}" FontSize="11" Foreground="{DynamicResource SemiColorText2}" TextTrimming="CharacterEllipsis"/>
+                                        </StackPanel>
+                                        <StackPanel Grid.Column="2" Spacing="2" HorizontalAlignment="Right">
+                                            <TextBlock Text="{Binding Status}" FontSize="11" HorizontalAlignment="Right"/>
+                                            <TextBlock Text="{Binding ItemCount, StringFormat='条目: {0}'}" FontSize="10" Foreground="{DynamicResource SemiColorText3}" HorizontalAlignment="Right"/>
+                                        </StackPanel>
+                                    </Grid>
+                                </Border>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
                 </Grid>
             </Border>
 
-            <DataGrid Grid.Column="1" Margin="10"
-                      ItemsSource="{Binding TranslationItems}"
-                      IsReadOnly="False"
-                      CanUserResizeColumns="True"
-                      GridLinesVisibility="All"
-                      BorderThickness="1"
-                      BorderBrush="{DynamicResource SemiColorBorder}"
-                      Background="{DynamicResource SemiColorBackground0}"
-                      CellEditEnding="OnCellEditEnding">
-                <DataGrid.Columns>
-                    <DataGridTextColumn Header="版本" Binding="{Binding Version}" Width="80" IsReadOnly="True" />
-                    <DataGridTextColumn Header="Key" Binding="{Binding Key}" Width="200" IsReadOnly="True" />
-                    <DataGridTextColumn Header="原文" Binding="{Binding OriginalText}" Width="3*" IsReadOnly="True" />
-                    <DataGridTextColumn Header="译文 (预览)" Binding="{Binding TranslatedText, Mode=TwoWay}" Width="3*" IsReadOnly="False" />
-                    <DataGridTextColumn Header="状态" Binding="{Binding Status}" Width="100" IsReadOnly="True" />
-                </DataGrid.Columns>
-            </DataGrid>
+            <!-- 右栏：摘要 + 键值表格 -->
+            <Border Grid.Column="2"
+                    Background="{DynamicResource SemiColorBackground0}"
+                    BorderBrush="{DynamicResource SemiColorBorder}"
+                    BorderThickness="1"
+                    CornerRadius="8"
+                    Padding="14">
+                <Grid RowDefinitions="Auto,Auto,*">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <StackPanel Grid.Column="0" Spacing="4" Margin="0,0,10,0" ClipToBounds="True">
+                            <TextBlock Text="{Binding CurrentModDisplayName}"
+                                       Classes="H5"
+                                       Theme="{DynamicResource TitleTextBlock}"
+                                       TextWrapping="Wrap"/>
+                            <TextBlock Text="{Binding CurrentDataState}" FontSize="12" Foreground="{DynamicResource SemiColorText3}" TextWrapping="Wrap"/>
+                        </StackPanel>
+
+                        <Grid Grid.Column="1" ColumnDefinitions="Auto,5,Auto">
+                            <Button Grid.Column="0" Width="128" Command="{Binding StartTranslationCommand}" IsVisible="{Binding !IsTranslating}" Theme="{DynamicResource SolidButton}" Classes="Success">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <iconMaterial:PackIconMaterial Kind="Play" Width="16" Height="16"/>
+                                    <TextBlock Text="开始翻译"/>
+                                </StackPanel>
+                            </Button>
+
+                            <Button Grid.Column="0" Width="128" Command="{Binding StopTranslationCommand}" IsVisible="{Binding IsTranslating}" Theme="{DynamicResource SolidButton}" Classes="Danger">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <iconMaterial:PackIconMaterial Kind="Stop" Width="16" Height="16"/>
+                                    <TextBlock Text="停止翻译"/>
+                                </StackPanel>
+                            </Button>
+
+                            <Button Grid.Column="2" Width="128" Command="{Binding SaveFilesCommand}" Theme="{DynamicResource SolidButton}" Classes="Warning">
+                                <StackPanel Orientation="Horizontal" Spacing="6">
+                                    <iconMaterial:PackIconMaterial Kind="ContentSave" Width="16" Height="16"/>
+                                    <TextBlock Text="保存"/>
+                                </StackPanel>
+                            </Button>
+                        </Grid>
+                    </Grid>
+
+                    <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center" Margin="0,10,0,10">
+                        <Button Command="{Binding LoadOrRefreshTranslationItemsCommand}" Theme="{DynamicResource SolidButton}">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <iconMaterial:PackIconMaterial Kind="Download" Width="16" Height="16" IsVisible="{Binding !HasSelectedModCache}"/>
+                                <iconMaterial:PackIconMaterial Kind="Refresh" Width="16" Height="16" IsVisible="{Binding HasSelectedModCache}"/>
+                                <TextBlock Text="{Binding LoadOrRefreshTranslationText}"/>
+                            </StackPanel>
+                        </Button>
+                        <TextBlock Text="版本过滤" VerticalAlignment="Center"/>
+                        <ComboBox Width="180"
+                                  ItemsSource="{Binding AvailableVersions}"
+                                  SelectedItem="{Binding SelectedVersion}"
+                                  PlaceholderText="全部" />
+                        <ProgressBar Width="220" Minimum="0" Maximum="100" Value="{Binding ProgressValue}" IsVisible="{Binding IsTranslating}"/>
+                    </StackPanel>
+
+                    <DataGrid Grid.Row="2"
+                              ItemsSource="{Binding TranslationItems}"
+                              IsReadOnly="{Binding IsTranslationTableReadOnly}"
+                              CanUserResizeColumns="True"
+                              GridLinesVisibility="All"
+                              BorderThickness="1"
+                              BorderBrush="{DynamicResource SemiColorBorder}"
+                              Background="{DynamicResource SemiColorBackground0}"
+                              CellEditEnding="OnCellEditEnding">
+                        <DataGrid.Columns>
+                            <DataGridTextColumn Header="版本" Binding="{Binding Version}" Width="90" IsReadOnly="True" />
+                            <DataGridTextColumn Header="Key" Binding="{Binding Key}" Width="220" IsReadOnly="True" />
+                            <DataGridTextColumn Header="原文" Binding="{Binding OriginalText}" Width="3*" IsReadOnly="True" />
+                            <DataGridTextColumn Header="译文" Binding="{Binding TranslatedText, Mode=TwoWay}" Width="3*" IsReadOnly="False" />
+                            <DataGridTextColumn Header="状态" Binding="{Binding Status}" Width="100" IsReadOnly="True" />
+                        </DataGrid.Columns>
+                    </DataGrid>
+                </Grid>
+            </Border>
         </Grid>
 
-        <!-- 浮动层：Mod 信息面板 (AdornerLayer 效果) -->
-        <Grid IsVisible="{Binding IsModInfoPanelVisible}"
-              ZIndex="1000">
-
-            <!-- 半透明遮罩背景 -->
-            <Border Background="#80000000"
-                    PointerPressed="OnOverlayPressed" />
-
-            <!-- ModInfoPanel 浮动面板 -->
-            <views:ModInfoPanel DataContext="{Binding ModInfoViewModel}"
-                                HorizontalAlignment="Right"
-                                VerticalAlignment="Stretch"
-                                Margin="0,30,0,16" />
-        </Grid>
-
-        <!-- 浮动按钮：查看 Mod 信息 -->
-        <Button Command="{Binding OpenModInfoPanelCommand}"
-                IsVisible="{Binding ModInfoViewModel, Converter={x:Static ObjectConverters.IsNotNull}}"
-                HorizontalAlignment="Right"
-                VerticalAlignment="Bottom"
-                Margin="0,0,24,24"
-                Width="56"
-                Height="56"
-                CornerRadius="12"
-                BorderThickness="0"
-                Padding="0"
-                ZIndex="999"
-                ToolTip.Tip="查看 Mod 信息">
-
-            <!-- 样式设置 -->
-            <Button.Styles>
-                <!-- 1. 默认状态：半透明 (0.3) -->
-                <Style Selector="Button">
-                    <Setter Property="Opacity" Value="0.3" />
-                    <!-- 默认背景和前景，防止闪烁 -->
-                    <Setter Property="Background" Value="{DynamicResource SemiColorPrimary}" />
-                    <Setter Property="Foreground" Value="White" />
-                </Style>
-
-                <!-- 2. 悬停状态：完全不透明 (1.0) -->
-                <Style Selector="Button:pointerover">
-                    <Setter Property="Opacity" Value="1.0" />
-                    <!-- 强制保留背景色，防止被系统默认样式覆盖为透明 -->
-                    <Setter Property="Background" Value="{DynamicResource SemiColorPrimary}" />
-                    <Setter Property="Cursor" Value="Hand" />
-                </Style>
-
-                <!-- 3. 按下状态 -->
-                <Style Selector="Button:pressed">
-                    <Setter Property="Opacity" Value="0.8" />
-                    <Setter Property="Background" Value="{DynamicResource SemiColorPrimary}" />
-                </Style>
-            </Button.Styles>
-
-            <Button.Transitions>
-                <Transitions>
-                    <DoubleTransition Property="Opacity" Duration="0:0:0.2" />
-                </Transitions>
-            </Button.Transitions>
-
-            <!-- 内容：Info 图标 -->
-            <Grid>
-                <Path Data="M12 2C6.48 2 2 6.48 2 12s4.48 10 10 10 10-4.48 10-10S17.52 2 12 2zm1 15h-2v-6h2v6zm0-8h-2V7h2v2z"
-                      Fill="White"
-                      Width="24"
-                      Height="24"
-                      Stretch="Uniform" 
-                      UseLayoutRounding="True" />
-            </Grid>
-        </Button>
+        <Expander Grid.Row="2"
+                  IsExpanded="False"
+                  Margin="12,0,12,10"
+                  HorizontalContentAlignment="Stretch">
+            <Expander.Header>
+                <Grid ColumnDefinitions="Auto,*" MinWidth="420">
+                    <TextBlock Text="运行日志" VerticalAlignment="Center"/>
+                    <TextBlock Grid.Column="1"
+                               Text="{Binding LatestLogLine}"
+                               HorizontalAlignment="Right"
+                               VerticalAlignment="Center"
+                               Foreground="{DynamicResource SemiColorText3}"
+                               TextTrimming="CharacterEllipsis"/>
+                </Grid>
+            </Expander.Header>
+            <Border Background="{DynamicResource SemiColorFill0}"
+                    BorderBrush="{DynamicResource SemiColorBorder}"
+                    BorderThickness="1"
+                    CornerRadius="6"
+                    Padding="10">
+                <ScrollViewer Height="130" VerticalScrollBarVisibility="Auto">
+                    <TextBlock Text="{Binding LogOutput}" TextWrapping="Wrap" Foreground="{DynamicResource SemiColorText2}" FontSize="12"/>
+                </ScrollViewer>
+            </Border>
+        </Expander>
     </Grid>
 </Window>

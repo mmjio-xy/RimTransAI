@@ -1,3 +1,5 @@
+using System.Collections.Generic;
+
 namespace RimTransAI.Models;
 
 public class AppConfig
@@ -46,4 +48,9 @@ public class AppConfig
     /// 备份压缩级别（0: Fastest, 1: Optimal, 2: SmallestSize）
     /// </summary>
     public int BackupCompressionLevel { get; set; } = 1;
+
+    /// <summary>
+    /// Mod 来源目录配置列表。
+    /// </summary>
+    public List<ModSourceFolder> ModSourceFolders { get; set; } = new();
 }

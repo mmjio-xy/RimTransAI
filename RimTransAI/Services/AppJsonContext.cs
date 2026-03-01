@@ -6,6 +6,8 @@ using RimTransAI.Models;
 namespace RimTransAI.Services;
 
 [JsonSerializable(typeof(AppConfig))]                    // 设置文件
+[JsonSerializable(typeof(ModSourceFolder))]             // Mod 来源项
+[JsonSerializable(typeof(List<ModSourceFolder>))]       // Mod 来源集合
 [JsonSerializable(typeof(Dictionary<string, string>))]   // 翻译内容
 [JsonSerializable(typeof(LlmRequest))]                   // LLM 请求体
 [JsonSerializable(typeof(JsonObject))]

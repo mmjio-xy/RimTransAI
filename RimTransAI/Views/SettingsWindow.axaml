@@ -3,14 +3,17 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="using:RimTransAI.ViewModels"
+        xmlns:iconMaterial="clr-namespace:IconPacks.Avalonia.Material;assembly=IconPacks.Avalonia.Material"
         mc:Ignorable="d" d:DesignWidth="520" d:DesignHeight="500"
         x:Class="RimTransAI.Views.SettingsWindow"
         x:DataType="vm:SettingsViewModel"
-        Title="设置"
-        Width="520"
-        Height="500"
+        Title="程序设置"
+        Width="760"
+        Height="620"
         WindowStartupLocation="CenterOwner"
-        CanResize="False"
+        CanResize="True"
+        MinWidth="620"
+        MinHeight="480"
         SystemDecorations="Full"
         ExtendClientAreaToDecorationsHint="True"
         Background="{DynamicResource SemiColorBackground0}">
@@ -18,7 +21,7 @@
     <Grid RowDefinitions="Auto, *, Auto" Margin="0,30,0,0">
         <!-- 标题 -->
         <TextBlock Grid.Row="0"
-                   Text="参数设置"
+                   Text="程序设置"
                    Classes="H4"
                    Theme="{DynamicResource TitleTextBlock}"
                    Margin="25,15,25,10"/>
@@ -96,6 +99,92 @@
                             </Grid>
                         </StackPanel>
 
+                    </StackPanel>
+                </ScrollViewer>
+            </TabItem>
+
+            <!-- Mod 来源设置选项卡 -->
+            <TabItem>
+                <TabItem.Header>
+                    <StackPanel Orientation="Horizontal" Spacing="6">
+                        <iconMaterial:PackIconMaterial Kind="FolderMultipleOutline"
+                                                       Width="16"
+                                                       Height="16"
+                                                       Foreground="{DynamicResource SemiColorText0}"
+                                                       VerticalAlignment="Center"/>
+                        <TextBlock Text="Mod 来源" VerticalAlignment="Center"/>
+                    </StackPanel>
+                </TabItem.Header>
+
+                <ScrollViewer VerticalScrollBarVisibility="Auto"
+                              HorizontalScrollBarVisibility="Auto"
+                              Padding="5,15,5,5">
+                    <StackPanel Spacing="10">
+                        <StackPanel Orientation="Horizontal" HorizontalAlignment="Stretch" Spacing="8">
+                            <Button Content="添加来源目录"
+                                    Command="{Binding AddModSourceCommand}"
+                                    Theme="{DynamicResource OutlineButton}"/>
+                        </StackPanel>
+
+                        <DataGrid x:Name="ModSourceGrid"
+                                  Tag="{Binding}"
+                                  ItemsSource="{Binding ModSourceFolders}"
+                                  SelectedItem="{Binding SelectedModSource}"
+                                  IsReadOnly="True"
+                                  AutoGenerateColumns="False"
+                                  CanUserResizeColumns="True"
+                                  GridLinesVisibility="All"
+                                  BorderThickness="1"
+                                  BorderBrush="{DynamicResource SemiColorBorder}"
+                                  Background="{DynamicResource SemiColorBackground0}"
+                                  HorizontalAlignment="Left"
+                                  MinWidth="980"
+                                  MinHeight="300">
+
+                            <DataGrid.Columns>
+                                <DataGridTemplateColumn Width="56">
+                                    <DataGridTemplateColumn.Header>
+                                        <TextBlock Text="图标" HorizontalAlignment="Center"/>
+                                    </DataGridTemplateColumn.Header>
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <iconMaterial:PackIconMaterial Kind="{Binding IconKind}"
+                                                                           Width="16"
+                                                                           Height="16"
+                                                                           Foreground="{DynamicResource SemiColorPrimary}"
+                                                                           HorizontalAlignment="Center"
+                                                                           VerticalAlignment="Center"/>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+
+                                <DataGridTextColumn Header="名称" Binding="{Binding DisplayName}" Width="160"/>
+                                <DataGridTextColumn Header="来源路径" Binding="{Binding FolderPath}" Width="260"/>
+                                <DataGridCheckBoxColumn Header="启用" Binding="{Binding IsEnabled}" Width="72"/>
+                                <DataGridTextColumn Header="图标键" Binding="{Binding IconKey}" Width="180"/>
+
+                                <DataGridTemplateColumn Width="170">
+                                    <DataGridTemplateColumn.Header>
+                                        <TextBlock Text="操作" HorizontalAlignment="Center"/>
+                                    </DataGridTemplateColumn.Header>
+                                    <DataGridTemplateColumn.CellTemplate>
+                                        <DataTemplate>
+                                            <StackPanel Orientation="Horizontal" Spacing="8" HorizontalAlignment="Center">
+                                                <Button Content="编辑"
+                                                        Command="{Binding #ModSourceGrid.((vm:SettingsViewModel)Tag).EditModSourceCommand}"
+                                                        CommandParameter="{Binding}"
+                                                        Theme="{DynamicResource OutlineButton}"/>
+                                                <Button Content="删除"
+                                                        Command="{Binding #ModSourceGrid.((vm:SettingsViewModel)Tag).DeleteModSourceCommand}"
+                                                        CommandParameter="{Binding}"
+                                                        Theme="{DynamicResource OutlineButton}"
+                                                        Classes="Danger"/>
+                                            </StackPanel>
+                                        </DataTemplate>
+                                    </DataGridTemplateColumn.CellTemplate>
+                                </DataGridTemplateColumn>
+                            </DataGrid.Columns>
+                        </DataGrid>
                     </StackPanel>
                 </ScrollViewer>
             </TabItem>

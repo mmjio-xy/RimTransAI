@@ -1,6 +1,8 @@
 using System;
 using System.Collections.ObjectModel;
 using System.Diagnostics;
+using System.IO;
+using System.Linq;
 using Avalonia;
 using Avalonia.Media.Imaging;
 using Avalonia.Platform;
@@ -43,7 +45,8 @@ public partial class ModInfoViewModel : ViewModelBase
     public ObservableCollection<ModDependency> Dependencies { get; } = new();
 
     // 辅助属性
-    public bool HasUrl => !string.IsNullOrEmpty(Url);
+    public string ResolvedUrl => ResolveProjectUrl();
+    public bool HasUrl => !string.IsNullOrEmpty(ResolvedUrl);
     public bool HasSupportedVersions => SupportedVersions.Count > 0;
     public bool HasDependencies => Dependencies.Count > 0;
     public string DependenciesHeader => $"依赖关系 ({Dependencies.Count})";
@@ -106,10 +109,32 @@ public partial class ModInfoViewModel : ViewModelBase
         }
 
         // 通知属性变化
+        OnPropertyChanged(nameof(ResolvedUrl));
         OnPropertyChanged(nameof(HasUrl));
         OnPropertyChanged(nameof(HasSupportedVersions));
         OnPropertyChanged(nameof(HasDependencies));
         OnPropertyChanged(nameof(DependenciesHeader));
+    }
+
+    private string ResolveProjectUrl()
+    {
+        if (!string.IsNullOrWhiteSpace(Url))
+        {
+            return Url.Trim();
+        }
+
+        if (string.IsNullOrWhiteSpace(FolderPath))
+        {
+            return string.Empty;
+        }
+
+        var folderName = Path.GetFileName(FolderPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+        if (string.IsNullOrWhiteSpace(folderName) || !folderName.All(char.IsDigit))
+        {
+            return string.Empty;
+        }
+
+        return $"https://steamcommunity.com/sharedfiles/filedetails/?id={folderName}";
     }
 
     /// <summary>
@@ -118,13 +143,14 @@ public partial class ModInfoViewModel : ViewModelBase
     [RelayCommand]
     private void OpenUrl()
     {
-        if (string.IsNullOrEmpty(Url)) return;
+        var targetUrl = ResolvedUrl;
+        if (string.IsNullOrEmpty(targetUrl)) return;
 
         try
         {
             Process.Start(new ProcessStartInfo
             {
-                FileName = Url,
+                FileName = targetUrl,
                 UseShellExecute = true
             });
         }

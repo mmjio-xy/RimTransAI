@@ -6,7 +6,6 @@ using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
-using Avalonia.Platform.Storage;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.DependencyInjection;
@@ -14,71 +13,61 @@ using RimTransAI.Models;
 using RimTransAI.Services;
 using RimTransAI.Views;
 
-// 需要这一行来解析 SettingsViewModel
-
-// 引用 Views 命名空间以使用 SettingsWindow
-
 namespace RimTransAI.ViewModels;
 
 public partial class MainWindowViewModel : ViewModelBase
 {
-    private readonly ConfigService _configService; // 新增配置服务
+    private readonly ConfigService _configService;
     private readonly FileGeneratorService _fileGeneratorService;
     private readonly LlmService _llmService;
     private readonly ModParserService _modParserService;
-    private readonly BatchingService _batchingService; // 智能分批服务
-    private readonly ModInfoService _modInfoService; // Mod 信息服务
-    private readonly BackupService _backupService; // 备份服务
+    private readonly BatchingService _batchingService;
+    private readonly ModInfoService _modInfoService;
+    private readonly BackupService _backupService;
+    private readonly WorkspaceService _workspaceService;
 
-    // 1. 数据源：存放扫描到的所有原始数据
+    private readonly Dictionary<string, List<TranslationItem>> _modItemsCache = new(StringComparer.OrdinalIgnoreCase);
+    private readonly List<WorkspaceModItem> _allWorkspaceMods = [];
+
     private List<TranslationItem> _allItems = new();
-
-    // 内部状态：记录当前 Mod 路径
     private string _currentModPath = string.Empty;
-
-    // 内部状态：记录当前 Mod 的 PackageId
     private string? _currentPackageId;
-
-    // 内部状态：记录当前 Mod 的名称
     private string? _currentModName;
-
-    // 翻译取消令牌源
     private CancellationTokenSource? _translationCts;
 
-    [ObservableProperty] private bool _isTranslating = false;
-
-    // 移除 ApiKey 属性，现在从 ConfigService 获取
-
-    [ObservableProperty] private string _logOutput = "就绪。请选择 Mod 文件夹开始...";
-
-    // 进度条相关
-    [ObservableProperty] private double _progressValue = 0;
-
-    // 4. UI 绑定属性
+    [ObservableProperty] private bool _isTranslating;
+    [ObservableProperty] private string _logOutput = "就绪。请先在设置页配置 Mod 来源目录。";
+    [ObservableProperty] private string _latestLogLine = "就绪。请先在设置页配置 Mod 来源目录。";
+    [ObservableProperty] private double _progressValue;
     [ObservableProperty] private string _selectedVersion = "全部";
-
-    // Mod 信息面板相关
-    [ObservableProperty] private bool _isModInfoPanelVisible = false;
     [ObservableProperty] private ModInfoViewModel? _modInfoViewModel;
+    [ObservableProperty] private WorkspaceModItem? _selectedMod;
+    [ObservableProperty] private string _modSearchText = string.Empty;
+    [ObservableProperty] private int _modSearchModeIndex;
+    [ObservableProperty] private string _currentDataState = "请选择中栏 Mod，并点击“加载翻译条目”。";
+    [ObservableProperty] private bool _isTranslationTableReadOnly = true;
+    [ObservableProperty] private bool _isCurrentModLoaded;
 
-    partial void OnIsModInfoPanelVisibleChanged(bool value)
+    public ObservableCollection<TranslationItem> TranslationItems { get; } = new();
+    public ObservableCollection<string> AvailableVersions { get; } = new();
+    public ObservableCollection<WorkspaceModItem> WorkspaceMods { get; } = new();
+    public string AppDisplayTitle { get; } = BuildAppDisplayTitle();
+
+    private static string BuildAppDisplayTitle()
     {
-        OnPropertyChanged(nameof(CanShowExpandButton));
+        var version = typeof(global::RimTransAI.App).Assembly.GetName().Version?.ToString(3) ?? "1.0.0";
+        return $"RimTrans AI v{version}";
     }
 
-    partial void OnModInfoViewModelChanged(ModInfoViewModel? value)
+    partial void OnLogOutputChanged(string value)
     {
-        OnPropertyChanged(nameof(CanShowExpandButton));
+        var lines = value
+            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        LatestLogLine = lines.Length > 0 ? lines[^1] : string.Empty;
     }
 
-    // =========================================================
-    // 构造函数
-    // =========================================================
-
-    // 设计时构造函数
     public MainWindowViewModel()
     {
-        // 设计时初始化所有服务，避免空引用异常
         var reflectionAnalyzer = new ReflectionAnalyzer();
         _configService = new ConfigService();
         _modParserService = new ModParserService(reflectionAnalyzer, _configService);
@@ -87,12 +76,12 @@ public partial class MainWindowViewModel : ViewModelBase
         _batchingService = new BatchingService();
         _modInfoService = new ModInfoService();
         _backupService = new BackupService(_configService);
+        _workspaceService = new WorkspaceService(_modInfoService, new IconCatalogService());
 
-        // 初始化版本列表，避免设计器报错
-        AvailableVersions.Add("全部");
+        InitializeCollections();
+        LoadWorkspaceFromConfig();
     }
 
-    // 运行时构造函数 (注入所有服务)
     public MainWindowViewModel(
         ModParserService modParserService,
         LlmService llmService,
@@ -100,7 +89,8 @@ public partial class MainWindowViewModel : ViewModelBase
         ConfigService configService,
         BatchingService batchingService,
         ModInfoService modInfoService,
-        BackupService backupService)
+        BackupService backupService,
+        WorkspaceService workspaceService)
     {
         _modParserService = modParserService;
         _llmService = llmService;
@@ -109,37 +99,83 @@ public partial class MainWindowViewModel : ViewModelBase
         _batchingService = batchingService;
         _modInfoService = modInfoService;
         _backupService = backupService;
+        _workspaceService = workspaceService;
+
+        InitializeCollections();
+        LoadWorkspaceFromConfig();
     }
 
-    // 2. 视图源：绑定到 DataGrid
-    public ObservableCollection<TranslationItem> TranslationItems { get; } = new();
-
-    // 3. 版本列表：绑定到 ComboBox
-    public ObservableCollection<string> AvailableVersions { get; } = new();
-
-    // =========================================================
-    // 核心逻辑
-    // =========================================================
+    private void InitializeCollections()
+    {
+        AvailableVersions.Clear();
+        AvailableVersions.Add("全部");
+        SelectedVersion = "全部";
+        ModSearchModeIndex = 0;
+    }
 
     partial void OnSelectedVersionChanged(string value)
     {
         ApplyFilter();
     }
 
-    /// <summary>
-    /// 打开设置窗口
-    /// </summary>
+    partial void OnModSearchTextChanged(string value)
+    {
+        ApplyWorkspaceFilter();
+    }
+
+    partial void OnModSearchModeIndexChanged(int value)
+    {
+        ApplyWorkspaceFilter();
+    }
+
+    partial void OnSelectedModChanged(WorkspaceModItem? value)
+    {
+        OnPropertyChanged(nameof(CurrentModDisplayName));
+        NotifyLoadActionStateChanged();
+
+        if (value == null)
+        {
+            ShowEmptyDataState("请选择中栏 Mod，并点击“加载翻译条目”。");
+            ModInfoViewModel = null;
+            _currentModPath = string.Empty;
+            _currentPackageId = null;
+            _currentModName = null;
+            return;
+        }
+
+        _currentModPath = value.ModPath;
+        LoadModInfo(value.ModPath);
+
+        if (_modItemsCache.TryGetValue(value.ModPath, out var cachedItems))
+        {
+            BindItems(cachedItems, editable: false, snapshotOnly: true);
+            CurrentDataState = "缓存快照（只读）。点击“刷新翻译条目”重新扫描并进入可编辑状态。";
+        }
+        else
+        {
+            ShowEmptyDataState("当前 Mod 尚未加载翻译条目，请点击“加载翻译条目”。");
+        }
+    }
+
+    public string CurrentModDisplayName => SelectedMod?.Name ?? "未选择";
+    public bool HasSelectedModCache => SelectedMod != null && _modItemsCache.ContainsKey(SelectedMod.ModPath);
+    public string LoadOrRefreshTranslationText => HasSelectedModCache ? "刷新翻译条目" : "加载翻译条目";
+
+    private void NotifyLoadActionStateChanged()
+    {
+        OnPropertyChanged(nameof(HasSelectedModCache));
+        OnPropertyChanged(nameof(LoadOrRefreshTranslationText));
+    }
+
     [RelayCommand]
     private async Task OpenSettings()
     {
-        // 获取当前主窗口
         var topLevel = Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop
             ? desktop.MainWindow
             : null;
 
         if (topLevel == null) return;
 
-        // 从 App.Services 中获取 SettingsViewModel 的新实例
         var app = (App)Application.Current!;
         if (app.Services == null) return;
 
@@ -150,38 +186,33 @@ public partial class MainWindowViewModel : ViewModelBase
             DataContext = settingsVm
         };
 
-        // 模态显示设置窗口
         await settingsWindow.ShowDialog(topLevel);
-
-        // 窗口关闭后提示
-        LogOutput += "\n设置已更新。";
+        LoadWorkspaceFromConfig();
+        LogOutput += "\n设置已更新，来源列表已刷新。";
     }
 
-    /// <summary>
-    /// 打开备份管理窗口
-    /// </summary>
     [RelayCommand]
     private async Task OpenBackupManager()
     {
-        // 获取当前主窗口
+        if (SelectedMod == null)
+        {
+            LogOutput = "请先在中栏选择一个 Mod。";
+            return;
+        }
+
         var topLevel = Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop
             ? desktop.MainWindow
             : null;
 
         if (topLevel == null) return;
 
-        // 从 App.Services 中获取 BackupManagerViewModel 的新实例
         var app = (App)Application.Current!;
         if (app.Services == null) return;
 
         var backupManagerVm = app.Services.GetRequiredService<BackupManagerViewModel>();
-
-        // 设置恢复备份需要的上下文信息
-        backupManagerVm.CurrentModPath = _currentModPath;
+        backupManagerVm.CurrentModPath = SelectedMod.ModPath;
         backupManagerVm.CurrentPackageId = _currentPackageId ?? "";
         backupManagerVm.TargetLanguage = _configService.CurrentConfig.TargetLanguage;
-
-        // 加载备份列表（必须在设置 CurrentPackageId 之后调用）
         backupManagerVm.Refresh();
 
         var backupManagerWindow = new BackupManagerWindow
@@ -189,76 +220,187 @@ public partial class MainWindowViewModel : ViewModelBase
             DataContext = backupManagerVm
         };
 
-        // 设置 CurrentWindow 以便 ViewModel 可以关闭窗口
         backupManagerVm.CurrentWindow = backupManagerWindow;
-
-        // 模态显示备份管理窗口
         await backupManagerWindow.ShowDialog(topLevel);
     }
 
-    /// <summary>
-    /// 选择 Mod 文件夹
-    /// </summary>
     [RelayCommand]
-    private async Task SelectFolder()
+    private void RefreshWorkspace()
     {
-        var topLevel = Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop
-            ? desktop.MainWindow
+        LoadWorkspaceFromConfig();
+    }
+
+    private void LoadWorkspaceFromConfig()
+    {
+        var previousPath = SelectedMod?.ModPath;
+
+        _allWorkspaceMods.Clear();
+        var configSources = _configService.CurrentConfig.ModSourceFolders ?? new List<ModSourceFolder>();
+        var discoveredMods = _workspaceService.DiscoverModsFromSources(configSources);
+
+        foreach (var mod in discoveredMods)
+        {
+            if (_modItemsCache.TryGetValue(mod.ModPath, out var cached))
+            {
+                mod.ItemCount = cached.Count;
+                mod.Status = "已缓存";
+            }
+
+            _allWorkspaceMods.Add(mod);
+        }
+
+        if (_allWorkspaceMods.Count == 0)
+        {
+            WorkspaceMods.Clear();
+            SelectedMod = null;
+            LogOutput = "未发现 Mod。请在设置页添加有效的来源目录。";
+            return;
+        }
+
+        ApplyWorkspaceFilter(previousPath);
+
+        LogOutput = $"已发现 {_allWorkspaceMods.Count} 个 Mod，可在中栏选择后手动加载翻译条目。";
+    }
+
+    private void ApplyWorkspaceFilter(string? preferredPath = null)
+    {
+        var keyword = ModSearchText.Trim();
+        IEnumerable<WorkspaceModItem> filtered = _allWorkspaceMods;
+
+        if (!string.IsNullOrWhiteSpace(keyword))
+        {
+            filtered = ModSearchModeIndex == 1
+                ? filtered.Where(x => (x.PackageId ?? string.Empty).Contains(keyword, StringComparison.OrdinalIgnoreCase))
+                : filtered.Where(x => (x.Name ?? string.Empty).Contains(keyword, StringComparison.OrdinalIgnoreCase));
+        }
+
+        var filteredList = filtered.ToList();
+        WorkspaceMods.Clear();
+        foreach (var mod in filteredList)
+        {
+            WorkspaceMods.Add(mod);
+        }
+
+        if (WorkspaceMods.Count == 0)
+        {
+            return;
+        }
+
+        var targetPath = preferredPath ?? SelectedMod?.ModPath;
+        var target = !string.IsNullOrWhiteSpace(targetPath)
+            ? WorkspaceMods.FirstOrDefault(x => string.Equals(x.ModPath, targetPath, StringComparison.OrdinalIgnoreCase))
             : null;
 
-        if (topLevel == null) return;
-
-        var folders = await topLevel.StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
+        if (target != null)
         {
-            Title = "选择 RimWorld Mod 根目录",
-            AllowMultiple = false
-        });
+            SelectedMod = target;
+            return;
+        }
 
-        if (folders.Count == 0) return;
+        if (SelectedMod == null || WorkspaceMods.All(x => !string.Equals(x.ModPath, SelectedMod.ModPath, StringComparison.OrdinalIgnoreCase)))
+        {
+            SelectedMod = WorkspaceMods[0];
+        }
+    }
 
-        var selectedPath = folders[0].Path.LocalPath;
-        _currentModPath = selectedPath; // 记录路径
-        LogOutput = $"正在扫描: {selectedPath}";
+    [RelayCommand]
+    private async Task LoadOrRefreshTranslationItems()
+    {
+        await LoadSelectedModItemsAsync(forceRescan: HasSelectedModCache);
+    }
+
+    private async Task LoadSelectedModItemsAsync(bool forceRescan)
+    {
+        if (SelectedMod == null)
+        {
+            LogOutput = "请先选择一个 Mod。";
+            return;
+        }
+
+        var config = _configService.CurrentConfig;
+        if (string.IsNullOrWhiteSpace(config.AssemblyCSharpPath))
+        {
+            LogOutput = "错误：未配置 Assembly-CSharp.dll 路径，请先前往设置页面配置。";
+            await OpenSettings();
+            return;
+        }
+
+        var targetPath = SelectedMod.ModPath;
+
+        if (!forceRescan && _modItemsCache.TryGetValue(targetPath, out var cached))
+        {
+            BindItems(cached, editable: true, snapshotOnly: false);
+            SelectedMod.Status = "就绪(缓存)";
+            CurrentDataState = "已加载（缓存），可编辑。";
+            return;
+        }
 
         try
         {
-            // 检查是否配置了 Assembly-CSharp.dll
-            var config = _configService.CurrentConfig;
-            if (string.IsNullOrWhiteSpace(config.AssemblyCSharpPath))
+            SelectedMod.Status = "扫描中";
+            LogOutput = $"正在扫描 {SelectedMod.Name} ...";
+
+            var scannedItems = await Task.Run(() => _modParserService.ScanModFolder(targetPath));
+            _modItemsCache[targetPath] = scannedItems;
+            NotifyLoadActionStateChanged();
+
+            if (SelectedMod?.ModPath == targetPath)
             {
-                LogOutput = "错误：未配置 Assembly-CSharp.dll 路径\n";
-                LogOutput += "请先点击【参数设置】按钮，配置 Assembly-CSharp.dll 的路径\n";
-                LogOutput += "该文件通常位于：\n";
-                LogOutput += "Steam: steamapps/common/RimWorld/RimWorldWin64_Data/Managed/Assembly-CSharp.dll";
-                await OpenSettings();
-                return;
+                BindItems(scannedItems, editable: true, snapshotOnly: false);
+                CurrentDataState = "已加载（实时扫描），可编辑。";
             }
 
-            _allItems = await Task.Run(() => _modParserService.ScanModFolder(selectedPath));
-
-            if (_allItems.Count == 0)
+            if (SelectedMod?.ModPath == targetPath)
             {
-                LogOutput = "未找到有效的翻译数据。\n";
-                LogOutput += "可能的原因：\n";
-                LogOutput += "1. Mod 目录下没有 Assemblies 文件夹\n";
-                LogOutput += "2. Assembly-CSharp.dll 路径配置不正确\n";
-                LogOutput += "3. Mod DLL 文件无法加载";
-                return;
+                SelectedMod.Status = "就绪";
+                SelectedMod.ItemCount = scannedItems.Count;
+                SelectedMod.LastScanAt = DateTime.Now.ToString("HH:mm:ss");
             }
 
-            UpdateVersionList();
-            SelectedVersion = "全部";
-            ApplyFilter();
-
-            LogOutput = $"扫描完成！共找到 {_allItems.Count} 条数据。";
-
-            // 加载 Mod 信息并显示面板
-            LoadModInfo(selectedPath);
+            LogOutput = scannedItems.Count == 0
+                ? "扫描完成，但未发现可翻译条目。"
+                : $"扫描完成，共加载 {scannedItems.Count} 条翻译项。";
         }
         catch (Exception ex)
         {
-            LogOutput = $"扫描出错: {ex.Message}";
+            if (SelectedMod?.ModPath == targetPath)
+            {
+                SelectedMod.Status = "失败";
+            }
+            LogOutput = $"扫描失败: {ex.Message}";
         }
+    }
+
+    private void BindItems(IReadOnlyList<TranslationItem> items, bool editable, bool snapshotOnly)
+    {
+        _allItems = items.ToList();
+
+        UpdateVersionList();
+        if (!AvailableVersions.Contains(SelectedVersion))
+        {
+            SelectedVersion = "全部";
+        }
+
+        ApplyFilter();
+        IsTranslationTableReadOnly = !editable;
+        IsCurrentModLoaded = editable;
+
+        if (snapshotOnly)
+        {
+            CurrentDataState = "缓存快照（只读）。";
+        }
+    }
+
+    private void ShowEmptyDataState(string message)
+    {
+        _allItems.Clear();
+        TranslationItems.Clear();
+        AvailableVersions.Clear();
+        AvailableVersions.Add("全部");
+        SelectedVersion = "全部";
+        IsTranslationTableReadOnly = true;
+        IsCurrentModLoaded = false;
+        CurrentDataState = message;
     }
 
     private void UpdateVersionList()
@@ -271,9 +413,9 @@ public partial class MainWindowViewModel : ViewModelBase
             .Distinct()
             .OrderBy(x => x);
 
-        foreach (var v in versions)
+        foreach (var version in versions)
         {
-            AvailableVersions.Add(v);
+            AvailableVersions.Add(version);
         }
     }
 
@@ -298,44 +440,52 @@ public partial class MainWindowViewModel : ViewModelBase
             TranslationItems.Add(item);
         }
 
-        if (_allItems.Count > 0)
+        if (SelectedMod != null)
         {
-            LogOutput = $"显示: {TranslationItems.Count} / {_allItems.Count} 条 (版本: {SelectedVersion})";
+            LogOutput = $"{SelectedMod.Name}: 显示 {TranslationItems.Count}/{_allItems.Count} 条 (版本: {SelectedVersion})";
         }
     }
 
-    /// <summary>
-    /// 开始翻译 (自动去重优化版)
-    /// </summary>
     [RelayCommand]
     private async Task StartTranslation()
     {
+        if (SelectedMod == null)
+        {
+            LogOutput = "请先在中栏选择一个 Mod。";
+            return;
+        }
+
+        if (!IsCurrentModLoaded)
+        {
+            LogOutput = "请先点击“加载翻译条目”，再执行翻译。";
+            return;
+        }
+
         if (TranslationItems.Count == 0)
         {
-            LogOutput = "当前列表为空，请先加载 Mod 或切换版本。";
+            LogOutput = "当前列表为空，请先切换版本或刷新数据。";
             return;
         }
 
         var config = _configService.CurrentConfig;
 
-        // 验证所有必需的配置项
         if (string.IsNullOrWhiteSpace(config.ApiKey))
         {
-            LogOutput = "错误：未配置 API Key，请点击\"参数设置\"按钮进行配置。";
+            LogOutput = "错误：未配置 API Key，请点击“程序设置”进行配置。";
             await OpenSettings();
             return;
         }
 
         if (string.IsNullOrWhiteSpace(config.ApiUrl))
         {
-            LogOutput = "错误：未配置 API URL，请点击\"参数设置\"按钮进行配置。";
+            LogOutput = "错误：未配置 API URL，请点击“程序设置”进行配置。";
             await OpenSettings();
             return;
         }
 
         if (string.IsNullOrWhiteSpace(config.TargetModel))
         {
-            LogOutput = "错误：未配置目标模型，请点击\"参数设置\"按钮进行配置。";
+            LogOutput = "错误：未配置目标模型，请点击“程序设置”进行配置。";
             await OpenSettings();
             return;
         }
@@ -343,30 +493,23 @@ public partial class MainWindowViewModel : ViewModelBase
         IsTranslating = true;
         ProgressValue = 0;
 
-        // 创建新的取消令牌
         _translationCts?.Dispose();
         _translationCts = new CancellationTokenSource();
         var cancellationToken = _translationCts.Token;
 
-        // 1. 获取当前视图中所有需要翻译的条目
-        // (不管是“未翻译”还是“已翻译”想重翻，都包含在内)
         var allItems = TranslationItems.ToList();
 
-        // 2. 按“原文”进行分组去重
-        // key: 原文, value: 拥有该原文的所有条目列表
         var distinctGroups = allItems
             .GroupBy(x => x.OriginalText)
             .ToList();
 
-        int totalGroups = distinctGroups.Count; // 实际需要翻译的唯一文本数量
-        int totalItems = allItems.Count; // 总条目数
+        int totalGroups = distinctGroups.Count;
+        int totalItems = allItems.Count;
         int processedGroups = 0;
-        int coveredItems = 0; // 累计已覆盖的条目数
 
-        LogOutput = $"开始翻译：共 {totalItems} 条目，去重后需翻译 {totalGroups} 条文本...";
+        LogOutput = $"开始翻译：{SelectedMod.Name} 共 {totalItems} 条，去重后 {totalGroups} 条文本。";
         LogOutput += $"\n模型: {config.TargetModel} | 目标: {config.TargetLanguage}";
 
-        // 使用智能分批服务
         var batchResult = _batchingService.CreateBatches(
             distinctGroups,
             config.MaxTokensPerBatch,
@@ -377,33 +520,18 @@ public partial class MainWindowViewModel : ViewModelBase
         var batches = batchResult.Batches;
         int totalBatches = batchResult.TotalBatches;
 
-        // 日志输出分批统计
         LogOutput += $"\n智能分批: {totalBatches} 批次";
-        if (batchResult.OversizedBatches > 0)
-            LogOutput += $" (含 {batchResult.OversizedBatches} 个超长文本单独处理)";
 
         try
         {
-            // 根据配置选择单线程或多线程翻译
             if (config.EnableMultiThreadTranslation)
             {
-                // 多线程翻译
-                await ExecuteMultiThreadTranslationAsync(
-                    batchResult,
-                    config,
-                    cancellationToken,
-                    totalBatches);
-
-                // 更新统计信息
-                processedGroups = totalGroups;
-                coveredItems = totalItems;
+                await ExecuteMultiThreadTranslationAsync(batchResult, config, cancellationToken, totalBatches);
             }
             else
             {
-                // 单线程翻译（原有逻辑）
                 for (int i = 0; i < batches.Count; i++)
                 {
-                    // 检查是否请求取消
                     if (cancellationToken.IsCancellationRequested)
                     {
                         LogOutput += $"\n翻译已停止，完成 {i}/{totalBatches} 批次";
@@ -413,15 +541,10 @@ public partial class MainWindowViewModel : ViewModelBase
                     var batch = batches[i];
                     int batchTokens = batchResult.BatchTokenCounts[i];
 
-                    // 3. 构建发送给 AI 的字典
-                    var batchDict = batch.ToDictionary(
-                        group => group.Key,
-                        group => group.Key
-                    );
+                    var batchDict = batch.ToDictionary(group => group.Key, group => group.Key);
 
                     try
                     {
-                        // 调用 LLM（传递自定义提示词，如果启用）
                         var results = await _llmService.TranslateBatchAsync(
                             config.ApiKey,
                             batchDict,
@@ -433,17 +556,13 @@ public partial class MainWindowViewModel : ViewModelBase
                                 : null
                         );
 
-                        // 4. 结果回填 (关键步骤)
                         foreach (var group in batch)
                         {
-                            // 使用原文作为 Key 查找翻译结果
                             var originalText = group.Key;
 
-                            // 检查 AI 是否返回了翻译
                             if (results.TryGetValue(originalText, out string? translatedText) &&
                                 !string.IsNullOrWhiteSpace(translatedText))
                             {
-                                // 广播：把翻译结果赋给该组下的【所有】条目
                                 foreach (var item in group)
                                 {
                                     item.TranslatedText = translatedText;
@@ -452,10 +571,8 @@ public partial class MainWindowViewModel : ViewModelBase
                             }
                             else
                             {
-                                // AI 没返回或跳过
                                 foreach (var item in group)
                                 {
-                                    // 如果原来没翻译，标记为跳过；如果原来有翻译，保持不变
                                     if (string.IsNullOrEmpty(item.TranslatedText))
                                         item.Status = "AI跳过";
                                 }
@@ -465,7 +582,6 @@ public partial class MainWindowViewModel : ViewModelBase
                     catch (Exception ex)
                     {
                         LogOutput += $"\n批次 {i + 1} 失败: {ex.Message}";
-                        // 标记该批次所有条目为出错
                         foreach (var group in batch)
                         {
                             foreach (var item in group) item.Status = "出错";
@@ -473,19 +589,11 @@ public partial class MainWindowViewModel : ViewModelBase
                     }
 
                     processedGroups += batch.Count;
-                    // 累加本批次覆盖的条目数
-                    coveredItems += batch.Sum(g => g.Count());
-
-                    // 进度条按"处理的唯一文本组数"计算
                     ProgressValue = (double)processedGroups / totalGroups * 100;
-
-                    // 日志显示优化 - 显示批次和 Token 信息
-                    LogOutput =
-                        $"翻译进度: {i + 1}/{totalBatches} 批次 | {processedGroups}/{totalGroups} 文本 (~{batchTokens} tokens)";
+                    LogOutput = $"翻译进度: {i + 1}/{totalBatches} 批次 | {processedGroups}/{totalGroups} 文本 (~{batchTokens} tokens)";
                 }
             }
 
-            // 区分正常完成和取消完成
             if (!cancellationToken.IsCancellationRequested)
             {
                 LogOutput += "\n翻译任务全部完成！";
@@ -503,9 +611,6 @@ public partial class MainWindowViewModel : ViewModelBase
         }
     }
 
-    /// <summary>
-    /// 停止翻译
-    /// </summary>
     [RelayCommand]
     private void StopTranslation()
     {
@@ -516,39 +621,26 @@ public partial class MainWindowViewModel : ViewModelBase
         LogOutput += "\n正在停止翻译...";
     }
 
-    /// <summary>
-    /// 执行多线程翻译
-    /// </summary>
     private async Task ExecuteMultiThreadTranslationAsync(
         BatchingService.BatchResult batchResult,
         AppConfig config,
         CancellationToken cancellationToken,
         int totalBatches)
     {
-        // 创建并发控制器
         using var concurrencyManager = new ConcurrencyManager(
             config.MaxThreads,
             config.ThreadIntervalMs);
 
-        // 创建进度报告器
-        int processedBatches = 0;
         using var progressReporter = new ThreadSafeProgressReporter(
-            progress =>
-            {
-                processedBatches = progress.ProcessedBatches;
-                UpdateMultiThreadProgress(progress, totalBatches);
-            },
+            progress => { UpdateMultiThreadProgress(progress); },
             log => LogOutput += $"\n{log}");
 
-        // 创建多线程翻译服务
         using var multiThreadService = new MultiThreadedTranslationService();
 
-        // 报告开始
         progressReporter.ReportLog($"开始多线程翻译: {config.MaxThreads} 线程, {totalBatches} 批次");
 
         try
         {
-            // 执行多线程翻译
             await multiThreadService.ExecuteBatchesAsync(
                 batchResult,
                 concurrencyManager,
@@ -567,39 +659,44 @@ public partial class MainWindowViewModel : ViewModelBase
         }
     }
 
-    /// <summary>
-    /// 更新多线程翻译进度
-    /// </summary>
-    private void UpdateMultiThreadProgress(TranslationProgress progress, int totalBatches)
+    private void UpdateMultiThreadProgress(TranslationProgress progress)
     {
-        // 更新进度条
         ProgressValue = (double)progress.ProcessedBatches / progress.TotalBatches * 100;
-
-        // 更新日志显示
         LogOutput =
             $"多线程翻译进度: {progress.ProcessedBatches}/{progress.TotalBatches} 批次 | 正在运行 {progress.ActiveThreads} 个线程";
     }
 
-    /// <summary>
-    /// 保存文件
-    /// </summary>
     [RelayCommand]
     private async Task SaveFiles()
     {
-        if (TranslationItems.Count == 0 || string.IsNullOrEmpty(_currentModPath)) return;
+        if (SelectedMod == null)
+        {
+            LogOutput = "请先选择一个 Mod。";
+            return;
+        }
+
+        if (!IsCurrentModLoaded)
+        {
+            LogOutput = "请先加载翻译条目，再执行保存。";
+            return;
+        }
+
+        if (TranslationItems.Count == 0 || string.IsNullOrEmpty(_currentModPath))
+        {
+            LogOutput = "当前没有可保存的条目。";
+            return;
+        }
 
         LogOutput = "正在生成 XML 文件...";
-
-        // 从配置获取目标语言文件夹名 (如 ChineseSimplified)
         string targetLang = _configService.CurrentConfig.TargetLanguage;
 
         try
         {
-            int count =
-                await Task.Run(() => _fileGeneratorService.GenerateFiles(_currentModPath, targetLang, _allItems));
+            int count = await Task.Run(() =>
+                _fileGeneratorService.GenerateFiles(_currentModPath, targetLang, _allItems));
+
             LogOutput = $"保存成功！已在 Languages/{targetLang} 下生成 {count} 个文件。";
 
-            // ===== 自动备份 =====
             await Task.Run(() =>
             {
                 string version = string.IsNullOrEmpty(SelectedVersion) || SelectedVersion == "全部"
@@ -607,7 +704,7 @@ public partial class MainWindowViewModel : ViewModelBase
                     : SelectedVersion;
 
                 string packageId = _currentPackageId ?? "UnknownMod";
-                string modName = _currentModName ?? "UnknownMod";
+                string modName = _currentModName ?? SelectedMod.Name;
 
                 var backupPath = _backupService.BackupTranslationFolder(
                     _currentModPath,
@@ -628,10 +725,6 @@ public partial class MainWindowViewModel : ViewModelBase
         }
     }
 
-
-    /// <summary>
-    /// 加载 Mod 信息并显示浮动面板
-    /// </summary>
     private void LoadModInfo(string modFolderPath)
     {
         try
@@ -639,49 +732,23 @@ public partial class MainWindowViewModel : ViewModelBase
             var modInfo = _modInfoService.LoadModInfo(modFolderPath);
             if (modInfo != null)
             {
-                // 记录当前 Mod 的 PackageId 和名称
                 _currentPackageId = modInfo.PackageId;
                 _currentModName = modInfo.Name;
 
-                // 创建 ModInfoViewModel 并加载数据
                 ModInfoViewModel = new ModInfoViewModel();
                 ModInfoViewModel.LoadFromModInfo(modInfo);
-
-                // 显示浮动面板
-                IsModInfoPanelVisible = true;
-
-                Logger.Info($"Mod 信息面板已打开: {modInfo.Name}");
+            }
+            else
+            {
+                ModInfoViewModel = null;
+                _currentPackageId = null;
+                _currentModName = null;
             }
         }
         catch (Exception ex)
         {
             Logger.Warning($"加载 Mod 信息失败: {ex.Message}");
+            ModInfoViewModel = null;
         }
     }
-
-    /// <summary>
-    /// 关闭 Mod 信息面板
-    /// </summary>
-    [RelayCommand]
-    private void CloseModInfoPanel()
-    {
-        IsModInfoPanelVisible = false;
-    }
-
-    /// <summary>
-    /// 打开 Mod 信息面板
-    /// </summary>
-    [RelayCommand]
-    private void OpenModInfoPanel()
-    {
-        if (ModInfoViewModel != null)
-        {
-            IsModInfoPanelVisible = true;
-        }
-    }
-
-    /// <summary>
-    /// 是否可以显示"展开"按钮（已加载 Mod 信息且面板已关闭）
-    /// </summary>
-    public bool CanShowExpandButton => ModInfoViewModel != null && !IsModInfoPanelVisible;
 }
