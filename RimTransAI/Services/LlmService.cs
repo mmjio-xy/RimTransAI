@@ -10,6 +10,9 @@ namespace RimTransAI.Services;
 
 public class LlmService : IDisposable
 {
+    private const string ChatCompletionsPath = "/v1/chat/completions";
+    private const string V1Path = "/v1";
+
     private static readonly HttpClient SharedHttpClient = new HttpClient
     {
         Timeout = TimeSpan.FromMinutes(2) // 翻译可能会慢，超时设长一点
@@ -52,92 +55,113 @@ public class LlmService : IDisposable
     string model,
     string targetLang = "Simplified Chinese",
     string? customPrompt = null)
-{
-    if (sourceTexts.Count == 0) return new Dictionary<string, string>();
+    {
+        if (sourceTexts.Count == 0) return new Dictionary<string, string>();
 
-    // 1. 序列化 User Content (这是一个 Dictionary)
-    // 使用 Context 序列化字典
-    var userContent = JsonSerializer.Serialize(sourceTexts, AppJsonContext.Default.DictionaryStringString);
+        var requestUrl = NormalizeApiUrl(apiUrl);
 
-    // 提示词选择逻辑：自定义提示词优先
-    var systemPrompt = !string.IsNullOrWhiteSpace(customPrompt)
-        ? customPrompt.Replace("{targetLang}", targetLang)
-        : $@"You are a professional translator for RimWorld. Target: {targetLang}.
+        // 1. 序列化 User Content (这是一个 Dictionary)
+        // 使用 Context 序列化字典
+        var userContent = JsonSerializer.Serialize(sourceTexts, AppJsonContext.Default.DictionaryStringString);
+
+        // 提示词选择逻辑：自定义提示词优先
+        var systemPrompt = !string.IsNullOrWhiteSpace(customPrompt)
+            ? customPrompt.Replace("{targetLang}", targetLang)
+            : $@"You are a professional translator for RimWorld. Target: {targetLang}.
  Rules: Preserve XML tags, variables like {{0}}, and paths. Input/Output is JSON.";
 
-    // 2. 构造请求对象 (使用我们新建的 LlmRequest 类，替代匿名对象)
-    var requestBodyObj = new LlmRequest
-    {
-        model = model,
-        messages = new List<LlmMessage>
+        // 2. 构造请求对象 (使用我们新建的 LlmRequest 类，替代匿名对象)
+        var requestBodyObj = new LlmRequest
         {
-            new LlmMessage { role = "system", content = systemPrompt },
-            new LlmMessage { role = "user", content = userContent }
-        },
-        temperature = 0.3,
-        response_format = new LlmResponseFormat { type = "json_object" }
-    };
+            model = model,
+            messages = new List<LlmMessage>
+            {
+                new LlmMessage { role = "system", content = systemPrompt },
+                new LlmMessage { role = "user", content = userContent }
+            },
+            temperature = 0.3,
+            response_format = new LlmResponseFormat { type = "json_object" }
+        };
 
-    // 3. 序列化请求体 (使用 Context 序列化 LlmRequest)
-    var jsonBody = JsonSerializer.Serialize(requestBodyObj, AppJsonContext.Default.LlmRequest);
+        // 3. 序列化请求体 (使用 Context 序列化 LlmRequest)
+        var jsonBody = JsonSerializer.Serialize(requestBodyObj, AppJsonContext.Default.LlmRequest);
 
-    // 4. 发送请求
-    var request = new HttpRequestMessage(HttpMethod.Post, apiUrl);
-    request.Headers.Add("Authorization", $"Bearer {apiKey}");
-    request.Content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
+        // 4. 发送请求
+        var request = new HttpRequestMessage(HttpMethod.Post, requestUrl);
+        request.Headers.Add("Authorization", $"Bearer {apiKey}");
+        request.Content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
 
-    var response = await _httpClient.SendAsync(request);
-    response.EnsureSuccessStatusCode();
+        var response = await _httpClient.SendAsync(request);
+        response.EnsureSuccessStatusCode();
 
-    // 5. 解析响应 (这里稍微麻烦点，因为我们没定义 Response 类，可以暂时用 JsonNode)
-    // 1. 先作为普通字符串读取出来
-    var rawResponse = await response.Content.ReadAsStringAsync();
+        // 5. 解析响应 (这里稍微麻烦点，因为我们没定义 Response 类，可以暂时用 JsonNode)
+        // 1. 先作为普通字符串读取出来
+        var rawResponse = await response.Content.ReadAsStringAsync();
 
-    // 2. 使用生成的 AOT 上下文手动反序列化
-    var jsonResponse = JsonSerializer.Deserialize(
-        rawResponse, 
-        AppJsonContext.Default.JsonObject
-    );
-    var content = jsonResponse?["choices"]?[0]?["message"]?["content"]?.ToString();
+        // 2. 使用生成的 AOT 上下文手动反序列化
+        var jsonResponse = JsonSerializer.Deserialize(
+            rawResponse,
+            AppJsonContext.Default.JsonObject
+        );
+        var content = jsonResponse?["choices"]?[0]?["message"]?["content"]?.ToString();
 
-    if (string.IsNullOrEmpty(content)) return new Dictionary<string, string>();
+        if (string.IsNullOrEmpty(content)) return new Dictionary<string, string>();
 
-    try
-    {
-        // 清理可能的 markdown 代码块标记（只在开头和结尾清理）
-        content = content.Trim();
-        if (content.StartsWith("```json"))
+        try
         {
-            content = content.Substring(7); // 移除 "```json"
+            // 清理可能的 markdown 代码块标记（只在开头和结尾清理）
+            content = content.Trim();
+            if (content.StartsWith("```json"))
+            {
+                content = content.Substring(7); // 移除 "```json"
+            }
+            else if (content.StartsWith("```"))
+            {
+                content = content.Substring(3); // 移除 "```"
+            }
+
+            if (content.EndsWith("```"))
+            {
+                content = content.Substring(0, content.Length - 3); // 移除结尾的 "```"
+            }
+
+            content = content.Trim();
+
+            // 使用 Context 反序列化结果字典
+            return JsonSerializer.Deserialize(content, AppJsonContext.Default.DictionaryStringString)
+                   ?? new Dictionary<string, string>();
         }
-        else if (content.StartsWith("```"))
+        catch (JsonException ex)
         {
-            content = content.Substring(3); // 移除 "```"
+            Logger.Error($"JSON解析失败: {ex.Message}");
+            Logger.Error($"响应内容: {content}");
+            return new Dictionary<string, string>();
         }
-
-        if (content.EndsWith("```"))
+        catch (Exception ex)
         {
-            content = content.Substring(0, content.Length - 3); // 移除结尾的 "```"
+            Logger.Error($"翻译结果处理失败: {ex.GetType().Name} - {ex.Message}");
+            return new Dictionary<string, string>();
         }
+    }
 
-        content = content.Trim();
+    /// <summary>
+    /// 规范化 API 地址，允许用户只填写 Base URL。
+    /// </summary>
+    public static string NormalizeApiUrl(string apiUrl)
+    {
+        if (string.IsNullOrWhiteSpace(apiUrl))
+            return apiUrl;
 
-        // 使用 Context 反序列化结果字典
-        return JsonSerializer.Deserialize(content, AppJsonContext.Default.DictionaryStringString)
-               ?? new Dictionary<string, string>();
+        var normalized = apiUrl.Trim().TrimEnd('/');
+
+        if (normalized.EndsWith(ChatCompletionsPath, StringComparison.OrdinalIgnoreCase))
+            return normalized;
+
+        if (normalized.EndsWith(V1Path, StringComparison.OrdinalIgnoreCase))
+            return normalized + "/chat/completions";
+
+        return normalized + ChatCompletionsPath;
     }
-    catch (JsonException ex)
-    {
-        Logger.Error($"JSON解析失败: {ex.Message}");
-        Logger.Error($"响应内容: {content}");
-        return new Dictionary<string, string>();
-    }
-    catch (Exception ex)
-    {
-        Logger.Error($"翻译结果处理失败: {ex.GetType().Name} - {ex.Message}");
-        return new Dictionary<string, string>();
-    }
-}
 
     protected virtual void Dispose(bool disposing)
     {

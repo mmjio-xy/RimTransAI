@@ -13,7 +13,7 @@ public class AppConfigTests
         var config = new AppConfig();
 
         // Assert
-        config.ApiUrl.Should().Be("https://api.openai.com/v1/chat/completions");
+        config.ApiUrl.Should().Be("https://api.openai.com");
         config.ApiKey.Should().BeEmpty();
         config.TargetModel.Should().Be("gpt-3.5-turbo");
         config.TargetLanguage.Should().Be("ChineseSimplified");

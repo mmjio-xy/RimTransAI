@@ -196,8 +196,8 @@
                                 <TextBlock Text="API 地址 (Base URL)" Classes="Tertiary"/>
                                 <TextBlock Text=" *" Foreground="#E53935" FontWeight="Bold"/>
                             </StackPanel>
-                            <TextBox Text="{Binding ApiUrl}" Watermark="例如: https://api.openai.com/v1/chat/completions"/>
-                            <TextBlock Text="提示: 使用 DeepSeek 时通常填 https://api.deepseek.com"
+                            <TextBox Text="{Binding ApiUrl}" Watermark="例如: https://api.openai.com"/>
+                            <TextBlock Text="提示: 只需填写 Base URL，程序会自动补全 /v1/chat/completions"
                                        FontSize="12" Foreground="{DynamicResource SemiColorText3}"/>
                         </StackPanel>
 
