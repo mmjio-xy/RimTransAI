@@ -17,3 +17,6 @@ Properties/
 CLAUDE.md
 AGENTS.md
 CHANGELOG.md
+.codex/**
+**/AGENTS.md
+CONTRIBUTING.md
