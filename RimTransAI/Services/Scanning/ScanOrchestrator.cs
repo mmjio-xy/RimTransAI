@@ -26,7 +26,7 @@ public sealed class ScanOrchestrator
     }
 
     /// <summary>
-    /// 阶段 0 脚手架：先贯通模块依赖关系，后续阶段填充完整语义。
+    /// 执行扫描全链路：加载目录规划 -> 语言目录解析 -> 源文件收集 -> 字段提取。
     /// </summary>
     public ScanResult Scan(ScanContext context, Dictionary<string, HashSet<string>> reflectionMap)
     {
@@ -50,7 +50,9 @@ public sealed class ScanOrchestrator
                 LanguageDirectoryCount = languageDirectories.Count,
                 DefFileCount = sources.DefFiles.Count,
                 KeyedFileCount = sources.KeyedFiles.Count,
-                DefInjectedFileCount = sources.DefInjectedFiles.Count
+                DefInjectedFileCount = sources.DefInjectedFiles.Count,
+                StringFileCount = sources.StringFiles.Count,
+                WordInfoFileCount = sources.WordInfoFiles.Count
             }
         };
     }

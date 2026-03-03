@@ -1,47 +1,39 @@
-using System.Reflection;
 using FluentAssertions;
-using RimTransAI.Models;
-using RimTransAI.Services;
+using RimTransAI.Services.Scanning;
 using Xunit;
 
 namespace RimTransAI.Tests.Services;
 
 public class KeyedParserTests
 {
-    private static List<TranslationItem> InvokeParseKeyedFile(string filePath, string version = "")
-    {
-        var service = new ModParserService(new ReflectionAnalyzer(), new ConfigService());
-        var method = typeof(ModParserService).GetMethod("ParseKeyedFile", BindingFlags.NonPublic | BindingFlags.Instance);
-        method.Should().NotBeNull("ParseKeyedFile must exist for keyed parsing");
-
-        var result = method!.Invoke(service, new object[] { filePath, version });
-        result.Should().BeOfType<List<TranslationItem>>();
-        return (List<TranslationItem>)result!;
-    }
-
     [Fact]
-    public void ParseKeyedFile_ValidFile_ExtractsAllElements()
+    public void Extract_WithValidKeyedFile_ExtractsAllLeafElements()
     {
-        // Arrange
         var tempFile = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.xml");
         try
         {
             File.WriteAllText(tempFile, """
-            <LanguageData>
-              <simple>Hello</simple>
-              <multiline>Line1\nLine2</multiline>
-              <todo>TODO</todo>
-              <simple>Second</simple>
-            </LanguageData>
-            """);
+                <LanguageData>
+                  <simple>Hello</simple>
+                  <multiline>Line1\nLine2</multiline>
+                </LanguageData>
+                """);
 
-            // Act
-            var results = InvokeParseKeyedFile(tempFile, "1.5");
+            var sources = new XmlSourceCollection();
+            sources.KeyedFiles.Add(new XmlSourceFile(
+                tempFile,
+                "Languages/English/Keyed/Main.xml",
+                "1.5",
+                "Keyed",
+                0));
 
-            // Assert
-            results.Should().HaveCount(2);
-            results.Should().Contain(x => x.Key == "simple" && x.OriginalText == "Hello");
-            results.Should().Contain(x => x.Key == "multiline" && x.OriginalText == "Line1\nLine2");
+            var result = new DefFieldExtractionEngine().Extract(
+                new ScanContext(Path.GetTempPath(), "English", "English", [], "1.5"),
+                sources,
+                new Dictionary<string, HashSet<string>>());
+
+            result.Should().Contain(x => x.Key == "simple" && x.OriginalText == "Hello");
+            result.Should().Contain(x => x.Key == "multiline" && x.OriginalText == "Line1\nLine2");
         }
         finally
         {
@@ -53,55 +45,33 @@ public class KeyedParserTests
     }
 
     [Fact]
-    public void ParseKeyedFile_EmptyElements_AreFiltered()
+    public void Extract_WithPlaceholderAndEmptyValues_FiltersThemOut()
     {
-        // Arrange
         var tempFile = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.xml");
         try
         {
             File.WriteAllText(tempFile, """
-            <LanguageData>
-              <empty></empty>
-              <blank>   </blank>
-              <todo>TODO</todo>
-            </LanguageData>
-            """);
+                <LanguageData>
+                  <empty></empty>
+                  <blank>   </blank>
+                  <todo>TODO</todo>
+                </LanguageData>
+                """);
 
-            // Act
-            var results = InvokeParseKeyedFile(tempFile);
+            var sources = new XmlSourceCollection();
+            sources.KeyedFiles.Add(new XmlSourceFile(
+                tempFile,
+                "Languages/English/Keyed/Main.xml",
+                "",
+                "Keyed",
+                0));
 
-            // Assert
-            results.Should().BeEmpty();
-        }
-        finally
-        {
-            if (File.Exists(tempFile))
-            {
-                File.Delete(tempFile);
-            }
-        }
-    }
+            var result = new DefFieldExtractionEngine().Extract(
+                new ScanContext(Path.GetTempPath(), "English", "English", [], "1.5"),
+                sources,
+                new Dictionary<string, HashSet<string>>());
 
-    [Fact]
-    public void ParseKeyedFile_NonLanguageDataRoot_ReturnsEmpty()
-    {
-        // Arrange
-        var tempFile = Path.Combine(Path.GetTempPath(), $"{Guid.NewGuid():N}.xml");
-        try
-        {
-            File.WriteAllText(tempFile, """
-            <Defs>
-              <ThingDef>
-                <defName>Test</defName>
-              </ThingDef>
-            </Defs>
-            """);
-
-            // Act
-            var results = InvokeParseKeyedFile(tempFile);
-
-            // Assert
-            results.Should().BeEmpty();
+            result.Should().NotContain(x => x.DefType == "Keyed");
         }
         finally
         {

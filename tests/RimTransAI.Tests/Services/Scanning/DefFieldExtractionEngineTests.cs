@@ -7,17 +7,75 @@ namespace RimTransAI.Tests.Services.Scanning;
 public class DefFieldExtractionEngineTests
 {
     [Fact]
-    public void Extract_Stage0_ReturnsEmptyItems()
+    public void Extract_ParsesDefsAndBuildsDefInjectedKey()
     {
-        var engine = new DefFieldExtractionEngine();
-        var context = new ScanContext(
-            "C:\\Mod",
-            "English",
-            "English",
-            new HashSet<string>(StringComparer.OrdinalIgnoreCase));
+        var root = CreateTempRoot();
+        try
+        {
+            var defsFile = Path.Combine(root, "ThingDefs.xml");
+            File.WriteAllText(defsFile, """
+                <Defs>
+                  <ThingDef>
+                    <defName>TestGun</defName>
+                    <label>Test Gun</label>
+                  </ThingDef>
+                </Defs>
+                """);
 
-        var items = engine.Extract(context, new XmlSourceCollection(), new Dictionary<string, HashSet<string>>());
+            var sources = new XmlSourceCollection();
+            sources.DefFiles.Add(new XmlSourceFile(defsFile, "Defs/ThingDefs.xml", "1.5", "Defs", 0));
 
-        items.Should().BeEmpty();
+            var engine = new DefFieldExtractionEngine();
+            var result = engine.Extract(
+                new ScanContext(root, "English", "English", [], "1.5"),
+                sources,
+                new Dictionary<string, HashSet<string>>());
+
+            result.Should().ContainSingle();
+            result[0].Key.Should().Be("TestGun.label");
+            result[0].OriginalText.Should().Be("Test Gun");
+            result[0].DefType.Should().Be("ThingDef");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Extract_KeyedUsesSetOrAddSemantics()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            var first = Path.Combine(root, "a.xml");
+            var second = Path.Combine(root, "b.xml");
+            File.WriteAllText(first, "<LanguageData><Greeting>Hello</Greeting><Skip>TODO</Skip></LanguageData>");
+            File.WriteAllText(second, "<LanguageData><Greeting>Hi</Greeting></LanguageData>");
+
+            var sources = new XmlSourceCollection();
+            sources.KeyedFiles.Add(new XmlSourceFile(first, "Languages/English/Keyed/a.xml", "1.5", "Keyed", 0));
+            sources.KeyedFiles.Add(new XmlSourceFile(second, "Languages/English/Keyed/b.xml", "1.5", "Keyed", 1));
+
+            var engine = new DefFieldExtractionEngine();
+            var result = engine.Extract(
+                new ScanContext(root, "English", "English", [], "1.5"),
+                sources,
+                new Dictionary<string, HashSet<string>>());
+
+            result.Should().ContainSingle(x => x.DefType == "Keyed" && x.Key == "Greeting" && x.OriginalText == "Hi");
+            result.Should().NotContain(x => x.Key == "Skip");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    private static string CreateTempRoot()
+    {
+        var root = Path.Combine(Path.GetTempPath(), $"rta_extract_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(root);
+        return root;
     }
 }

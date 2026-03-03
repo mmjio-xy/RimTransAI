@@ -7,7 +7,8 @@ public sealed record ScanContext(
     string ModRootPath,
     string LanguageFolderName,
     string LegacyLanguageFolderName,
-    IReadOnlyCollection<string> ActivePackageIds);
+    IReadOnlyCollection<string> ActivePackageIds,
+    string CurrentGameVersion = "");
 
 public sealed record LoadFolderPlanEntry(
     string FullPath,
@@ -35,6 +36,10 @@ public sealed class XmlSourceCollection
     public List<XmlSourceFile> KeyedFiles { get; } = [];
 
     public List<XmlSourceFile> DefInjectedFiles { get; } = [];
+
+    public List<XmlSourceFile> StringFiles { get; } = [];
+
+    public List<XmlSourceFile> WordInfoFiles { get; } = [];
 }
 
 public sealed class ScanDiagnostics
@@ -48,6 +53,10 @@ public sealed class ScanDiagnostics
     public int KeyedFileCount { get; set; }
 
     public int DefInjectedFileCount { get; set; }
+
+    public int StringFileCount { get; set; }
+
+    public int WordInfoFileCount { get; set; }
 }
 
 public sealed class ScanResult
