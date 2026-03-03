@@ -168,12 +168,8 @@ public sealed class FieldExtractionRuleSet
             return true;
         }
 
-        if (value.Contains('/') || value.Contains('\\'))
-        {
-            return true;
-        }
-
-        var lower = value.ToLowerInvariant();
+        var trimmed = value.Trim();
+        var lower = trimmed.ToLowerInvariant();
         foreach (var extension in PathLikeExtensions)
         {
             if (lower.EndsWith(extension, StringComparison.Ordinal))
@@ -182,7 +178,72 @@ public sealed class FieldExtractionRuleSet
             }
         }
 
-        return false;
+        if (!trimmed.Contains('/') && !trimmed.Contains('\\'))
+        {
+            return false;
+        }
+
+        if (EndsWithSentencePunctuation(trimmed))
+        {
+            return false;
+        }
+
+        if (trimmed.IndexOfAny([' ', '\t', '\r', '\n']) >= 0)
+        {
+            return false;
+        }
+
+        var segments = trimmed.Split(['/', '\\'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (segments.Length < 2)
+        {
+            return false;
+        }
+
+        foreach (var segment in segments)
+        {
+            if (!IsPathSegmentLike(segment))
+            {
+                return false;
+            }
+        }
+
+        return true;
+    }
+
+    private static bool EndsWithSentencePunctuation(string value)
+    {
+        if (string.IsNullOrEmpty(value))
+        {
+            return false;
+        }
+
+        var last = value[^1];
+        return last is '.' or ',' or '!' or '?' or ';' or '。' or '，' or '！' or '？' or '；';
+    }
+
+    private static bool IsPathSegmentLike(string segment)
+    {
+        if (string.IsNullOrWhiteSpace(segment))
+        {
+            return false;
+        }
+
+        foreach (var ch in segment)
+        {
+            if (char.IsLetterOrDigit(ch))
+            {
+                continue;
+            }
+
+            if (ch is '_' or '-' or '.' or ':')
+            {
+                continue;
+            }
+
+            return false;
+        }
+
+        return true;
     }
 }
 
@@ -195,6 +256,10 @@ public static class ExtractionReasonCodes
     public const string DefReflectionField = "Defs.ReflectionField";
 
     public const string DefListItem = "Defs.ListItem";
+
+    public const string DefInjectedLeaf = "DefInjected.Leaf";
+
+    public const string DefInjectedListItem = "DefInjected.ListItem";
 
     public const string KeyedLeaf = "Keyed.Leaf";
 }

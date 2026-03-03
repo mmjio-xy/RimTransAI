@@ -145,6 +145,34 @@ public class DefsSourceParserTests
         }
     }
 
+    [Fact]
+    public void Parse_DefWithoutDefName_FallsBackToNameAttribute()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            var file = Path.Combine(root, "ThingDefs.xml");
+            File.WriteAllText(file, """
+                <Defs>
+                  <ThingDef Name="NamedThingDef">
+                    <label>Named Def Label</label>
+                  </ThingDef>
+                </Defs>
+                """);
+
+            var parser = new DefsSourceParser();
+            var result = parser.Parse(file);
+
+            result.IsValidDefsRoot.Should().BeTrue();
+            result.Definitions.Should().ContainSingle();
+            result.Definitions[0].DefName.Should().Be("NamedThingDef");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     private static List<ParsedDefNode> Flatten(IReadOnlyList<ParsedDefNode> nodes)
     {
         var result = new List<ParsedDefNode>();

@@ -310,6 +310,49 @@ public class DefFieldExtractionEngineTests
         }
     }
 
+    [Fact]
+    public void Extract_DefInjectedFiles_AreIncludedInResult()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            var defInjectedFile = Path.Combine(root, "ThingDefs.xml");
+            File.WriteAllText(defInjectedFile, """
+                <LanguageData>
+                  <PRF_IOPPusher_I.description>This modified I/O port allows you to push items directly into the next cell. More of an output port than input/output.</PRF_IOPPusher_I.description>
+                  <PRF_SunWallLight.comps.CompSchedule.offMessage>Off for plant resting period</PRF_SunWallLight.comps.CompSchedule.offMessage>
+                </LanguageData>
+                """);
+
+            var sources = new XmlSourceCollection();
+            sources.DefInjectedFiles.Add(new XmlSourceFile(
+                defInjectedFile,
+                "Languages/English/DefInjected/ThingDef/ThingDefs.xml",
+                "1.5",
+                "DefInjected:ThingDef",
+                0));
+
+            var engine = new DefFieldExtractionEngine();
+            var result = engine.Extract(
+                new ScanContext(root, "English", "English", [], "1.5"),
+                sources,
+                new Dictionary<string, HashSet<string>>());
+
+            result.Should().ContainSingle(x =>
+                x.Key == "PRF_IOPPusher_I.description" &&
+                x.DefType == "ThingDef" &&
+                x.ExtractionReasonCode == ExtractionReasonCodes.DefInjectedLeaf);
+            result.Should().ContainSingle(x =>
+                x.Key == "PRF_SunWallLight.comps.CompSchedule.offMessage" &&
+                x.DefType == "ThingDef" &&
+                x.ExtractionReasonCode == ExtractionReasonCodes.DefInjectedLeaf);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     private static string CreateTempRoot()
     {
         var root = Path.Combine(Path.GetTempPath(), $"rta_extract_{Guid.NewGuid():N}");

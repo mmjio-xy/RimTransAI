@@ -248,7 +248,13 @@ public sealed class DefsSourceParser
             ?.Value
             ?.Trim();
 
-        return defName ?? string.Empty;
+        if (!string.IsNullOrWhiteSpace(defName))
+        {
+            return defName;
+        }
+
+        var nameAttr = defElement.Attribute("Name")?.Value?.Trim();
+        return nameAttr ?? string.Empty;
     }
 
     private static string ResolveClassName(XElement element)

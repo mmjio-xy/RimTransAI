@@ -48,6 +48,7 @@ public sealed class DefFieldExtractionEngine
         var diagnostics = new ExtractionDiagnostics();
         var results = new List<TranslationItem>();
         ExtractDefs(_defsSourceParser, _defPathBuilder, _ruleSet, _conflictPolicy, sources.DefFiles, normalizedReflectionMap, shortNameMap, results, diagnostics);
+        ExtractDefInjected(_conflictPolicy, _defPathBuilder, sources.DefInjectedFiles, results, diagnostics);
         ExtractKeyed(_conflictPolicy, sources.KeyedFiles, results, diagnostics);
         diagnostics.ExtractedItemCount = results.Count;
         LastDiagnostics = diagnostics;
@@ -351,6 +352,209 @@ public sealed class DefFieldExtractionEngine
                 diagnostics.ErrorCount++;
             }
         }
+    }
+
+    private static void ExtractDefInjected(
+        ExtractionConflictPolicy conflictPolicy,
+        DefPathBuilder defPathBuilder,
+        IReadOnlyList<XmlSourceFile> defInjectedFiles,
+        List<TranslationItem> output,
+        ExtractionDiagnostics diagnostics)
+    {
+        var upsert = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var source in defInjectedFiles.OrderBy(x => x.Order))
+        {
+            try
+            {
+                var doc = XDocument.Load(source.FullPath);
+                if (doc.Root == null)
+                {
+                    continue;
+                }
+
+                var defType = ResolveDefInjectedDefType(source);
+                foreach (var element in doc.Root.Elements())
+                {
+                    if (element.Name.LocalName.Equals("rep", StringComparison.OrdinalIgnoreCase))
+                    {
+                        TryExtractLegacyRepEntry(element, defPathBuilder, source, defType, conflictPolicy, output, upsert, diagnostics);
+                        continue;
+                    }
+
+                    var key = defPathBuilder.NormalizeKey(element.Name.LocalName);
+                    if (string.IsNullOrWhiteSpace(key) || !key.Contains('.', StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
+
+                    if (key.EndsWith(".slateRef", StringComparison.OrdinalIgnoreCase))
+                    {
+                        var slateValue = element.HasElements
+                            ? string.Concat(element.Nodes())
+                            : element.Value;
+                        TryAppendDefInjectedLeaf(
+                            defPathBuilder,
+                            key,
+                            slateValue,
+                            source,
+                            defType,
+                            conflictPolicy,
+                            output,
+                            upsert,
+                            diagnostics);
+                        continue;
+                    }
+
+                    if (!element.HasElements)
+                    {
+                        TryAppendDefInjectedLeaf(
+                            defPathBuilder,
+                            key,
+                            element.Value,
+                            source,
+                            defType,
+                            conflictPolicy,
+                            output,
+                            upsert,
+                            diagnostics);
+                        continue;
+                    }
+
+                    var listIndex = 0;
+                    foreach (var listItem in element.Descendants().Where(x => x.Name.LocalName.Equals("li", StringComparison.OrdinalIgnoreCase)))
+                    {
+                        var indexedKey = defPathBuilder.NormalizeKey($"{key}.{listIndex}");
+                        TryAppendDefInjectedLeaf(
+                            defPathBuilder,
+                            indexedKey,
+                            listItem.Value,
+                            source,
+                            defType,
+                            conflictPolicy,
+                            output,
+                            upsert,
+                            diagnostics,
+                            ExtractionReasonCodes.DefInjectedListItem);
+                        listIndex++;
+                    }
+                }
+            }
+            catch (XmlException ex)
+            {
+                Logger.Warning($"DefInjected XML 格式错误 {source.FullPath}: {ex.Message}");
+                diagnostics.ErrorCount++;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"解析 DefInjected 文件出错: {source.FullPath}", ex);
+                diagnostics.ErrorCount++;
+            }
+        }
+    }
+
+    private static void TryExtractLegacyRepEntry(
+        XElement repElement,
+        DefPathBuilder defPathBuilder,
+        XmlSourceFile source,
+        string defType,
+        ExtractionConflictPolicy conflictPolicy,
+        List<TranslationItem> output,
+        Dictionary<string, int> upsert,
+        ExtractionDiagnostics diagnostics)
+    {
+        var pathElement = repElement.Elements()
+            .FirstOrDefault(x => x.Name.LocalName.Equals("path", StringComparison.OrdinalIgnoreCase));
+        if (pathElement == null)
+        {
+            return;
+        }
+
+        var translationElement = repElement.Elements()
+            .FirstOrDefault(x => x.Name.LocalName.Equals("trans", StringComparison.OrdinalIgnoreCase));
+        var key = defPathBuilder.NormalizeKey(pathElement.Value);
+        if (string.IsNullOrWhiteSpace(key))
+        {
+            return;
+        }
+
+        TryAppendDefInjectedLeaf(
+            defPathBuilder,
+            key,
+            translationElement?.Value ?? string.Empty,
+            source,
+            defType,
+            conflictPolicy,
+            output,
+            upsert,
+            diagnostics);
+    }
+
+    private static void TryAppendDefInjectedLeaf(
+        DefPathBuilder defPathBuilder,
+        string key,
+        string? rawValue,
+        XmlSourceFile source,
+        string defType,
+        ExtractionConflictPolicy conflictPolicy,
+        List<TranslationItem> output,
+        Dictionary<string, int> upsert,
+        ExtractionDiagnostics diagnostics,
+        string reasonCode = ExtractionReasonCodes.DefInjectedLeaf)
+    {
+        var normalizedKey = defPathBuilder.NormalizeKey(key);
+        if (string.IsNullOrWhiteSpace(normalizedKey))
+        {
+            return;
+        }
+
+        var value = (rawValue ?? string.Empty).Replace("\\n", "\n").Trim();
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return;
+        }
+
+        if (value.Equals("TODO", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var item = new TranslationItem
+        {
+            Key = normalizedKey,
+            DefType = defType,
+            OriginalText = value,
+            TranslatedText = string.Empty,
+            Status = "未翻译",
+            FilePath = source.FullPath,
+            Version = source.Version,
+            ExtractionReasonCode = reasonCode,
+            ExtractionSourceContext = $"Path={source.RelativePath};Key={normalizedKey};Source=DefInjected"
+        };
+
+        var dedupeKey = $"definjected|{item.DefType}|{item.Key}";
+        Upsert(output, upsert, dedupeKey, item, conflictPolicy, diagnostics);
+    }
+
+    private static string ResolveDefInjectedDefType(XmlSourceFile source)
+    {
+        const string prefix = "DefInjected:";
+        if (source.SourceKind.StartsWith(prefix, StringComparison.OrdinalIgnoreCase))
+        {
+            return source.SourceKind[prefix.Length..];
+        }
+
+        var segments = source.RelativePath.Split('/', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        for (var i = 0; i < segments.Length - 1; i++)
+        {
+            if (segments[i].Equals("DefInjected", StringComparison.OrdinalIgnoreCase) ||
+                segments[i].Equals("DefLinked", StringComparison.OrdinalIgnoreCase))
+            {
+                return segments[i + 1];
+            }
+        }
+
+        return "Def";
     }
 
     private static bool IsAbstractDef(XElement defElement)

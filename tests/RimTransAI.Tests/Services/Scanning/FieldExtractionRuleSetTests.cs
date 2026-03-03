@@ -29,5 +29,6 @@ public class FieldExtractionRuleSetTests
 
         rules.IsPathLikeContent("Textures/UI/Icon.png").Should().BeTrue();
         rules.IsPathLikeContent("Human readable text").Should().BeFalse();
+        rules.IsPathLikeContent("More of an output port than input/output.").Should().BeFalse();
     }
 }
