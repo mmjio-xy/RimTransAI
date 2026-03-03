@@ -34,7 +34,7 @@
 
 ### 2.1 包含范围
 - `RimTransAI/Services/ModParserService.cs`（核心扫描主流程重写）
-- `RimTransAI/Services/TranslationExtractor.cs`（提取引擎重写）
+- `RimTransAI/Services/Scanning/DefFieldExtractionEngine.cs`（提取引擎重写）
 - 新增 `Services/Scanning/*` 子模块（加载计划、文件注册、解析、提取、合并）
 - 测试重建：`tests/RimTransAI.Tests/Services/*`（单元 + 集成）
 
@@ -193,7 +193,7 @@ ScanOrchestrator
 
 ### 验收
 - 提取链路完全由新引擎驱动；
-- `TranslationExtractor` 旧实现移除或降级为薄封装。
+- 旧 `TranslationExtractor` 已移除，提取链路仅保留新引擎。
 
 ---
 
