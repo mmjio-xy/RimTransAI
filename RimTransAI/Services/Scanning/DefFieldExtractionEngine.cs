@@ -7,78 +7,29 @@ using RimTransAI.Models;
 
 namespace RimTransAI.Services.Scanning;
 
+public enum ExtractionConflictPolicy
+{
+    LastWriteWins,
+    FirstWriteWins
+}
+
 public sealed class DefFieldExtractionEngine
 {
-    private static readonly HashSet<string> BlacklistSet = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "defname", "def",
-        "texpath", "texture", "texturepath", "iconpath", "shader",
-        "sound", "sounddef", "soundcast", "soundhit", "soundmelee",
-        "tag", "tags", "class", "workerclass", "driverclass", "linktype", "drawertype",
-        "pathcost", "altitudelayer", "graphicdata",
-        "path", "file", "icon", "graphic",
-        "setting", "config", "worker", "link", "curve",
-        "size", "color", "mask", "effect", "cost", "stat",
-        "tex", "coordinates", "offset",
-        "key"
-    };
-
-    private static readonly string[] BlacklistKeywords =
-    {
-        "defname",
-        "path", "texpath", "texture", "iconpath", "shader",
-        "sound",
-        "tag", "class", "worker", "driver", "drawer", "link",
-        "pathcost", "altitudelayer", "graphic",
-        "file", "icon", "graphic", "setting", "config", "link", "curve",
-        "size", "color", "mask", "effect", "cost", "stat",
-        "tex", "coordinates", "offset"
-    };
-
-    private static readonly HashSet<string> TechnicalListSet = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "prerequisites", "researchPrerequisites", "hiddenPrerequisites",
-        "requiredResearchFacilities", "requiredMemeList",
-        "thingCategories", "stuffCategories", "tradeTags", "weaponTags", "apparelTags", "destroyOnDrop",
-        "categories", "filter", "fixedIngredientFilter", "defaultIngredientFilter", "ingredients", "products",
-        "specialProducts", "backstoryFiltersOverride",
-        "recipeUsers", "recipes", "importRecipesFrom", "excludeOres",
-        "workTypes", "roleTags",
-        "appliedOnFixedBodyParts", "groups", "hediffGivers",
-        "requiredCapacities", "affordances", "capabilities", "statBases", "equippedStatOffsets",
-        "capacities",
-        "inspectorTabs", "compClass", "comps", "modExtensions"
-    };
-
-    private static readonly HashSet<string> WhitelistSet = new(StringComparer.OrdinalIgnoreCase)
-    {
-        "label", "description",
-        "jobstring", "verb", "labelnoun", "pawnlabel",
-        "reportstring", "baseinspectline", "deathmessage",
-        "text", "lettertext", "letterlabel",
-        "rulesstrings", "slateref",
-        "questnamerules", "questdescriptionrules",
-        "labelshort", "gerund", "message", "labelkey"
-    };
-
-    private static readonly string[] SmartSuffixes =
-    {
-        "label",
-        "text",
-        "desc",
-        "message",
-        "string"
-    };
-
     private readonly DefsSourceParser _defsSourceParser;
     private readonly DefPathBuilder _defPathBuilder;
+    private readonly FieldExtractionRuleSet _ruleSet;
+    private readonly ExtractionConflictPolicy _conflictPolicy;
 
     public DefFieldExtractionEngine(
         DefsSourceParser? defsSourceParser = null,
-        DefPathBuilder? defPathBuilder = null)
+        DefPathBuilder? defPathBuilder = null,
+        FieldExtractionRuleSet? ruleSet = null,
+        ExtractionConflictPolicy conflictPolicy = ExtractionConflictPolicy.LastWriteWins)
     {
         _defsSourceParser = defsSourceParser ?? new DefsSourceParser();
         _defPathBuilder = defPathBuilder ?? new DefPathBuilder();
+        _ruleSet = ruleSet ?? FieldExtractionRuleSet.CreateDefault();
+        _conflictPolicy = conflictPolicy;
     }
 
     public List<TranslationItem> Extract(
@@ -90,18 +41,20 @@ public sealed class DefFieldExtractionEngine
         ArgumentNullException.ThrowIfNull(sources);
         ArgumentNullException.ThrowIfNull(reflectionMap);
 
+        var normalizedReflectionMap = BuildNormalizedReflectionMap(reflectionMap);
+        var shortNameMap = BuildShortNameMap(normalizedReflectionMap);
+
         var results = new List<TranslationItem>();
-        var shortNameMap = BuildShortNameMap(reflectionMap);
-
-        ExtractDefs(_defsSourceParser, _defPathBuilder, sources.DefFiles, reflectionMap, shortNameMap, results);
-        ExtractKeyed(sources.KeyedFiles, results);
-
+        ExtractDefs(_defsSourceParser, _defPathBuilder, _ruleSet, _conflictPolicy, sources.DefFiles, normalizedReflectionMap, shortNameMap, results);
+        ExtractKeyed(_conflictPolicy, sources.KeyedFiles, results);
         return results;
     }
 
     private static void ExtractDefs(
         DefsSourceParser defsSourceParser,
         DefPathBuilder defPathBuilder,
+        FieldExtractionRuleSet ruleSet,
+        ExtractionConflictPolicy conflictPolicy,
         IReadOnlyList<XmlSourceFile> defFiles,
         Dictionary<string, HashSet<string>> reflectionMap,
         Dictionary<string, List<string>> shortNameMap,
@@ -146,6 +99,8 @@ public sealed class DefFieldExtractionEngine
                         definition,
                         source,
                         defPathBuilder,
+                        ruleSet,
+                        conflictPolicy,
                         reflectionMap,
                         shortNameMap,
                         output,
@@ -167,6 +122,8 @@ public sealed class DefFieldExtractionEngine
         ParsedDefEntry definition,
         XmlSourceFile source,
         DefPathBuilder defPathBuilder,
+        FieldExtractionRuleSet ruleSet,
+        ExtractionConflictPolicy conflictPolicy,
         Dictionary<string, HashSet<string>> reflectionMap,
         Dictionary<string, List<string>> shortNameMap,
         List<TranslationItem> output,
@@ -174,11 +131,7 @@ public sealed class DefFieldExtractionEngine
     {
         var extractedKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        TraverseNodes(
-            definition.Nodes,
-            definition.DefType,
-            allowListExtraction: false,
-            parentContainerTag: string.Empty);
+        TraverseNodes(definition.Nodes, definition.DefType, allowListExtraction: false, parentContainerTag: string.Empty);
 
         void TraverseNodes(
             IReadOnlyList<ParsedDefNode> nodes,
@@ -187,7 +140,7 @@ public sealed class DefFieldExtractionEngine
             string parentContainerTag)
         {
             var translatableFields = ResolveTypeFields(currentTypeName, reflectionMap, shortNameMap);
-            var hasReflectionData = translatableFields != null && translatableFields.Count > 0;
+            var hasReflectionData = translatableFields is { Count: > 0 };
 
             foreach (var node in nodes)
             {
@@ -202,54 +155,28 @@ public sealed class DefFieldExtractionEngine
                     continue;
                 }
 
-                if (IsBlacklisted(tagName))
+                if (ruleSet.IsBlacklisted(tagName))
                 {
                     continue;
                 }
 
-                var shouldExtract = false;
-                if (!tagName.Equals("li", StringComparison.OrdinalIgnoreCase))
-                {
-                    if (!IsPathLikeContent(node.Value))
-                    {
-                        if (IsWhitelistedField(tagName))
-                        {
-                            if (!IsSafeTextList(tagName))
-                            {
-                                shouldExtract = true;
-                            }
-                        }
-                        else if (IsSmartSuffixMatch(tagName))
-                        {
-                            shouldExtract = true;
-                        }
-                        else if (hasReflectionData &&
-                                 translatableFields != null &&
-                                 ContainsIgnoreCase(translatableFields, tagName) &&
-                                 !node.HasChildren)
-                        {
-                            shouldExtract = true;
-                        }
-                    }
-                }
-                else if (!node.HasChildren && allowListExtraction)
-                {
-                    if (!TechnicalListSet.Contains(parentContainerTag) &&
-                        !IsPathLikeContent(node.Value))
-                    {
-                        shouldExtract = true;
-                    }
-                }
+                var reasonCode = TryResolveReasonCode(
+                    node,
+                    tagName,
+                    parentContainerTag,
+                    allowListExtraction,
+                    hasReflectionData,
+                    translatableFields,
+                    ruleSet);
 
-                if (shouldExtract)
+                if (!string.IsNullOrWhiteSpace(reasonCode))
                 {
                     var value = (node.Value ?? string.Empty).Trim();
                     if (!string.IsNullOrWhiteSpace(value))
                     {
                         var key = defPathBuilder.BuildKey(definition.DefName, node.PathSegments);
                         var normalizedKey = defPathBuilder.NormalizeKey(key);
-                        if (!string.IsNullOrWhiteSpace(normalizedKey) &&
-                            extractedKeys.Add(normalizedKey))
+                        if (!string.IsNullOrWhiteSpace(normalizedKey) && extractedKeys.Add(normalizedKey))
                         {
                             var item = new TranslationItem
                             {
@@ -259,11 +186,13 @@ public sealed class DefFieldExtractionEngine
                                 TranslatedText = string.Empty,
                                 Status = "未翻译",
                                 FilePath = source.FullPath,
-                                Version = source.Version
+                                Version = source.Version,
+                                ExtractionReasonCode = reasonCode,
+                                ExtractionSourceContext = BuildDefsContext(definition, node, currentTypeName)
                             };
 
                             var dedupeKey = $"defs|{item.DefType}|{item.Version}|{item.Key}";
-                            Upsert(output, upsert, dedupeKey, item);
+                            Upsert(output, upsert, dedupeKey, item, conflictPolicy);
                         }
                     }
                 }
@@ -274,171 +203,73 @@ public sealed class DefFieldExtractionEngine
                 }
 
                 var nextAllowListExtraction = hasReflectionData && translatableFields != null
-                    ? ContainsIgnoreCase(translatableFields, tagName)
-                    : IsSafeTextList(tagName);
+                    ? translatableFields.Contains(tagName)
+                    : ruleSet.IsSafeTextList(tagName);
 
                 var childTypeName = !string.IsNullOrWhiteSpace(node.ClassName)
                     ? node.ClassName
                     : tagName;
 
-                TraverseNodes(
-                    node.Children,
-                    childTypeName,
-                    nextAllowListExtraction,
-                    tagName);
+                TraverseNodes(node.Children, childTypeName, nextAllowListExtraction, tagName);
             }
         }
     }
 
-    private static bool IsAbstractDef(XElement defElement)
+    private static string? TryResolveReasonCode(
+        ParsedDefNode node,
+        string tagName,
+        string parentContainerTag,
+        bool allowListExtraction,
+        bool hasReflectionData,
+        HashSet<string>? translatableFields,
+        FieldExtractionRuleSet ruleSet)
     {
-        var abstractAttr = defElement.Attribute("Abstract");
-        return abstractAttr != null &&
-               abstractAttr.Value.Trim().Equals("true", StringComparison.OrdinalIgnoreCase);
-    }
-
-    private static Dictionary<string, List<string>> BuildShortNameMap(
-        Dictionary<string, HashSet<string>> reflectionMap)
-    {
-        var result = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
-        foreach (var fullClassName in reflectionMap.Keys)
+        if (!tagName.Equals("li", StringComparison.OrdinalIgnoreCase))
         {
-            var lastDot = fullClassName.LastIndexOf('.');
-            var shortName = lastDot >= 0
-                ? fullClassName[(lastDot + 1)..]
-                : fullClassName;
-
-            if (!result.TryGetValue(shortName, out var list))
+            if (ruleSet.IsPathLikeContent(node.Value))
             {
-                list = [];
-                result[shortName] = list;
+                return null;
             }
 
-            list.Add(fullClassName);
-        }
+            if (ruleSet.IsWhitelistedField(tagName) && !ruleSet.IsSafeTextList(tagName))
+            {
+                return ExtractionReasonCodes.DefWhitelist;
+            }
 
-        return result;
-    }
+            if (ruleSet.IsSmartSuffixMatch(tagName))
+            {
+                return ExtractionReasonCodes.DefSmartSuffix;
+            }
 
-    private static HashSet<string>? ResolveTypeFields(
-        string typeName,
-        Dictionary<string, HashSet<string>> reflectionMap,
-        Dictionary<string, List<string>> shortNameMap)
-    {
-        if (string.IsNullOrWhiteSpace(typeName))
-        {
+            if (hasReflectionData && translatableFields != null && translatableFields.Contains(tagName) && !node.HasChildren)
+            {
+                return ExtractionReasonCodes.DefReflectionField;
+            }
+
             return null;
         }
 
-        if (reflectionMap.TryGetValue(typeName, out var fields))
+        if (!node.HasChildren && allowListExtraction)
         {
-            return fields;
-        }
-
-        if (!shortNameMap.TryGetValue(typeName, out var fullNames) || fullNames.Count == 0)
-        {
-            return null;
-        }
-
-        var fullName = fullNames[0];
-        return reflectionMap.TryGetValue(fullName, out fields) ? fields : null;
-    }
-
-    private static bool ContainsIgnoreCase(HashSet<string> set, string value)
-    {
-        if (set.Contains(value))
-        {
-            return true;
-        }
-
-        foreach (var item in set)
-        {
-            if (item.Equals(value, StringComparison.OrdinalIgnoreCase))
+            if (!ruleSet.IsTechnicalList(parentContainerTag) && !ruleSet.IsPathLikeContent(node.Value))
             {
-                return true;
+                return ExtractionReasonCodes.DefListItem;
             }
         }
 
-        return false;
+        return null;
     }
 
-    private static bool IsBlacklisted(string name)
+    private static string BuildDefsContext(
+        ParsedDefEntry definition,
+        ParsedDefNode node,
+        string currentTypeName)
     {
-        if (BlacklistSet.Contains(name))
-        {
-            return true;
-        }
-
-        var span = name.AsSpan();
-        foreach (var keyword in BlacklistKeywords)
-        {
-            if (span.Contains(keyword.AsSpan(), StringComparison.OrdinalIgnoreCase))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static bool IsPathLikeContent(string? value)
-    {
-        if (string.IsNullOrWhiteSpace(value))
-        {
-            return true;
-        }
-
-        if (value.Contains('/') || value.Contains('\\'))
-        {
-            return true;
-        }
-
-        var lowerValue = value.ToLowerInvariant();
-        return lowerValue.EndsWith(".png", StringComparison.Ordinal) ||
-               lowerValue.EndsWith(".jpg", StringComparison.Ordinal) ||
-               lowerValue.EndsWith(".jpeg", StringComparison.Ordinal) ||
-               lowerValue.EndsWith(".gif", StringComparison.Ordinal) ||
-               lowerValue.EndsWith(".wav", StringComparison.Ordinal) ||
-               lowerValue.EndsWith(".mp3", StringComparison.Ordinal) ||
-               lowerValue.EndsWith(".xml", StringComparison.Ordinal) ||
-               lowerValue.EndsWith(".txt", StringComparison.Ordinal);
-    }
-
-    private static bool IsWhitelistedField(string name)
-    {
-        return WhitelistSet.Contains(name);
-    }
-
-    private static bool IsSmartSuffixMatch(string name)
-    {
-        if (string.IsNullOrEmpty(name))
-        {
-            return false;
-        }
-
-        var lowerName = name.ToLowerInvariant();
-        foreach (var suffix in SmartSuffixes)
-        {
-            if (lowerName.EndsWith(suffix, StringComparison.Ordinal))
-            {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    private static bool IsSafeTextList(string name)
-    {
-        return name.Equals("rulesstrings", StringComparison.OrdinalIgnoreCase) ||
-               name.Equals("descriptions", StringComparison.OrdinalIgnoreCase) ||
-               name.Equals("labels", StringComparison.OrdinalIgnoreCase) ||
-               name.Equals("messages", StringComparison.OrdinalIgnoreCase) ||
-               name.Equals("helptexts", StringComparison.OrdinalIgnoreCase) ||
-               name.Equals("baseinspectline", StringComparison.OrdinalIgnoreCase);
+        return $"DefName={definition.DefName};Path={node.Path};Type={currentTypeName};Tag={node.Name}";
     }
 
     private static void ExtractKeyed(
+        ExtractionConflictPolicy conflictPolicy,
         IReadOnlyList<XmlSourceFile> keyedFiles,
         List<TranslationItem> output)
     {
@@ -488,11 +319,13 @@ public sealed class DefFieldExtractionEngine
                         TranslatedText = string.Empty,
                         Status = "未翻译",
                         FilePath = source.FullPath,
-                        Version = source.Version
+                        Version = source.Version,
+                        ExtractionReasonCode = ExtractionReasonCodes.KeyedLeaf,
+                        ExtractionSourceContext = $"Path={source.RelativePath};Key={key};Source=Keyed"
                     };
 
                     var dedupeKey = $"keyed|{item.Key}";
-                    Upsert(output, upsert, dedupeKey, item);
+                    Upsert(output, upsert, dedupeKey, item, conflictPolicy);
                 }
             }
             catch (XmlException ex)
@@ -506,15 +339,109 @@ public sealed class DefFieldExtractionEngine
         }
     }
 
+    private static bool IsAbstractDef(XElement defElement)
+    {
+        var abstractAttr = defElement.Attribute("Abstract");
+        return abstractAttr != null && abstractAttr.Value.Trim().Equals("true", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static Dictionary<string, HashSet<string>> BuildNormalizedReflectionMap(
+        Dictionary<string, HashSet<string>> reflectionMap)
+    {
+        var result = new Dictionary<string, HashSet<string>>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var pair in reflectionMap)
+        {
+            var normalizedFields = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+            foreach (var field in pair.Value)
+            {
+                if (string.IsNullOrWhiteSpace(field))
+                {
+                    continue;
+                }
+
+                normalizedFields.Add(field.Trim());
+                normalizedFields.Add(CleanBackingFieldName(field));
+            }
+
+            result[pair.Key] = normalizedFields;
+        }
+
+        return result;
+    }
+
+    private static string CleanBackingFieldName(string fieldName)
+    {
+        var start = fieldName.IndexOf('<');
+        var end = fieldName.IndexOf('>');
+        if (start >= 0 && end > start)
+        {
+            return fieldName.Substring(start + 1, end - start - 1);
+        }
+
+        return fieldName;
+    }
+
+    private static Dictionary<string, List<string>> BuildShortNameMap(
+        Dictionary<string, HashSet<string>> reflectionMap)
+    {
+        var result = new Dictionary<string, List<string>>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var fullClassName in reflectionMap.Keys)
+        {
+            var lastDot = fullClassName.LastIndexOf('.');
+            var shortName = lastDot >= 0 ? fullClassName[(lastDot + 1)..] : fullClassName;
+
+            if (!result.TryGetValue(shortName, out var list))
+            {
+                list = [];
+                result[shortName] = list;
+            }
+
+            list.Add(fullClassName);
+        }
+
+        return result;
+    }
+
+    private static HashSet<string>? ResolveTypeFields(
+        string typeName,
+        Dictionary<string, HashSet<string>> reflectionMap,
+        Dictionary<string, List<string>> shortNameMap)
+    {
+        if (string.IsNullOrWhiteSpace(typeName))
+        {
+            return null;
+        }
+
+        if (reflectionMap.TryGetValue(typeName, out var fields))
+        {
+            return fields;
+        }
+
+        if (!shortNameMap.TryGetValue(typeName, out var fullNames) || fullNames.Count == 0)
+        {
+            return null;
+        }
+
+        var fullName = fullNames[0];
+        return reflectionMap.TryGetValue(fullName, out fields) ? fields : null;
+    }
+
     private static void Upsert(
         List<TranslationItem> target,
         Dictionary<string, int> indexMap,
         string key,
-        TranslationItem value)
+        TranslationItem value,
+        ExtractionConflictPolicy conflictPolicy)
     {
         if (indexMap.TryGetValue(key, out var existingIndex))
         {
-            target[existingIndex] = value;
+            if (conflictPolicy == ExtractionConflictPolicy.LastWriteWins)
+            {
+                target[existingIndex] = value;
+            }
+
             return;
         }
 

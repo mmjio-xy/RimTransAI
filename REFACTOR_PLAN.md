@@ -4,8 +4,9 @@
 - 阶段 0：已完成。
 - 阶段 1：已完成。
 - 阶段 2：已完成。
-- 阶段 3：进行中（已完成 `DefsSourceParser`、`DefPathBuilder`、遍历深度/节点数保护、并将 Defs 提取切换为 `ParsedDefNode` 结构遍历驱动，含阶段测试）。
-- 阶段 4-6：未开始。
+- 阶段 3：已完成（`DefsSourceParser`、`DefPathBuilder`、结构路径遍历与稳定性测试已落地）。
+- 阶段 4：已完成（规则对象化、ReasonCode/SourceContext、冲突策略显式化、`ParseSingleFile` 新引擎切换与阶段测试已落地）。
+- 阶段 5-6：未开始。
 
 ---
 

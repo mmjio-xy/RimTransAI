@@ -1,4 +1,4 @@
-﻿using CommunityToolkit.Mvvm.ComponentModel;
+using CommunityToolkit.Mvvm.ComponentModel;
 
 namespace RimTransAI.Models;
 
@@ -30,4 +30,10 @@ public partial class TranslationItem : ObservableObject
 
     // 来源文件路径 (用于最后生成文件时确定输出位置)
     public string FilePath { get; set; } = string.Empty;
+
+    // 提取原因代码（例如 Defs.ReflectionField / Keyed.Leaf）
+    public string ExtractionReasonCode { get; set; } = string.Empty;
+
+    // 提取上下文（例如 DefName/Path/Type）
+    public string ExtractionSourceContext { get; set; } = string.Empty;
 }

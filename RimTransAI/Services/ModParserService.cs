@@ -145,9 +145,9 @@ public class ModParserService
 
         Logger.Info($"类型定义加载完成，找到 {_reflectionMap.Count} 个可翻译类型");
 
-        // 第三步：创建翻译提取器并解析文件
+        // 第三步：使用扫描提取引擎解析文件
         Logger.Info("步骤 2/2: 解析 XML 文件...");
-        var extractor = new TranslationExtractor(_reflectionMap);
+        var extractionEngine = new DefFieldExtractionEngine();
 
         try
         {
@@ -159,22 +159,36 @@ public class ModParserService
             }
 
             string version = GetVersionFromPath(filePath);
-            // 优化：直接传递 IEnumerable，避免 ToList()
-            var units = extractor.Extract(doc.Root.Elements(), filePath, version);
+            var sources = new XmlSourceCollection();
+            var sourceFile = new XmlSourceFile(
+                Path.GetFullPath(filePath),
+                Path.GetFileName(filePath),
+                version,
+                doc.Root.Name.LocalName,
+                0);
 
-            foreach (var unit in units)
+            if (doc.Root.Name.LocalName.Equals("Defs", StringComparison.OrdinalIgnoreCase))
             {
-                items.Add(new TranslationItem
-                {
-                    Key = unit.Key,
-                    DefType = unit.DefType,
-                    OriginalText = unit.OriginalText,
-                    TranslatedText = "",
-                    Status = "未翻译",
-                    FilePath = unit.SourceFile,
-                    Version = unit.Version
-                });
+                sources.DefFiles.Add(sourceFile);
             }
+            else if (doc.Root.Name.LocalName.Equals("LanguageData", StringComparison.OrdinalIgnoreCase))
+            {
+                sources.KeyedFiles.Add(sourceFile);
+            }
+            else
+            {
+                Logger.Warning($"未识别的 XML 根节点，已跳过: {doc.Root.Name.LocalName}");
+                return items;
+            }
+
+            var context = new ScanContext(
+                modPath,
+                "English",
+                "English",
+                GetLikelyActivePackageIds(modPath),
+                ResolveCurrentGameVersion(modPath));
+
+            items.AddRange(extractionEngine.Extract(context, sources, _reflectionMap));
 
             Logger.Info("========================================");
             Logger.Info($"解析完成，提取 {items.Count} 个翻译项");
