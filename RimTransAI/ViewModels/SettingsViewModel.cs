@@ -32,6 +32,7 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty] private bool _enableMultiThreadTranslation;
     [ObservableProperty] private int _maxThreads = 4;
     [ObservableProperty] private int _threadIntervalMs = 100;
+    [ObservableProperty] private int _apiRequestTimeoutSeconds = 480;
     [ObservableProperty] private bool _enableAutoBackup = true;
     [ObservableProperty] private string _backupDirectory = "";
     [ObservableProperty] private int _maxBackupCount = 10;
@@ -133,6 +134,7 @@ public partial class SettingsViewModel : ViewModelBase
         EnableMultiThreadTranslation = cfg.EnableMultiThreadTranslation;
         MaxThreads = Math.Clamp(cfg.MaxThreads, 1, 10);
         ThreadIntervalMs = Math.Max(0, cfg.ThreadIntervalMs);
+        ApiRequestTimeoutSeconds = Math.Clamp(cfg.ApiRequestTimeoutSeconds, 30, 1800);
 
         EnableAutoBackup = cfg.EnableAutoBackup;
         BackupDirectory = cfg.BackupDirectory ?? "";
@@ -281,6 +283,7 @@ public partial class SettingsViewModel : ViewModelBase
             EnableMultiThreadTranslation = EnableMultiThreadTranslation,
             MaxThreads = Math.Clamp(MaxThreads, 1, 10),
             ThreadIntervalMs = Math.Max(0, ThreadIntervalMs),
+            ApiRequestTimeoutSeconds = Math.Clamp(ApiRequestTimeoutSeconds, 30, 1800),
             EnableAutoBackup = EnableAutoBackup,
             BackupDirectory = BackupDirectory,
             MaxBackupCount = Math.Max(1, MaxBackupCount),

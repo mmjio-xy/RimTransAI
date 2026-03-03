@@ -20,6 +20,7 @@ public class AppConfigTests
         config.AppTheme.Should().Be("Light");
         config.AssemblyCSharpPath.Should().BeEmpty();
         config.DebugMode.Should().BeFalse();
+        config.ApiRequestTimeoutSeconds.Should().Be(480);
     }
 
     [Fact]
@@ -32,10 +33,12 @@ public class AppConfigTests
         config.ApiUrl = "https://custom.api.com";
         config.ApiKey = "test-key";
         config.DebugMode = true;
+        config.ApiRequestTimeoutSeconds = 900;
 
         // Assert
         config.ApiUrl.Should().Be("https://custom.api.com");
         config.ApiKey.Should().Be("test-key");
         config.DebugMode.Should().BeTrue();
+        config.ApiRequestTimeoutSeconds.Should().Be(900);
     }
 }

@@ -308,6 +308,24 @@
                             <TextBox Text="{Binding TargetModel}" Watermark="例如: gpt-3.5-turbo / deepseek-chat"/>
                         </StackPanel>
 
+                        <!-- 单次请求超时 -->
+                        <StackPanel Spacing="8">
+                            <StackPanel Orientation="Horizontal">
+                                <TextBlock Text="单次请求超时" Classes="Tertiary"/>
+                                <TextBlock Text=" (秒，30-1800)" FontSize="12" Foreground="{DynamicResource SemiColorText3}"/>
+                            </StackPanel>
+                            <NumericUpDown Value="{Binding ApiRequestTimeoutSeconds}"
+                                          Minimum="30"
+                                          Maximum="1800"
+                                          Increment="30"
+                                          FormatString="N0"
+                                          HorizontalAlignment="Left"
+                                          Width="140"/>
+                            <TextBlock Text="用于控制单个批次 API 请求等待时长。请求较慢时建议 480~900 秒。"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource SemiColorText3}"/>
+                        </StackPanel>
+
                         <!-- 提示词设置 -->
                         <Expander Header="提示词设置" IsExpanded="False">
                             <StackPanel Spacing="12" Margin="0,10,0,0">

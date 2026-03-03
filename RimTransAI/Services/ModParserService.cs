@@ -20,6 +20,9 @@ public class ModParserService
     // 用于匹配目录名中的版本号（不带斜杠）
     private static readonly Regex VersionDirRegex = new Regex(@"^\d+\.\d+$", RegexOptions.Compiled);
 
+    // 兼容旧版 RimWorld 语言目录命名
+    private static readonly string[] KeyedFolderNames = { "Keyed", "CodeLinked" };
+
     /// <summary>
     /// 目录黑名单（文件遍历时直接跳过，防止扫描无效文件导致性能问题）
     /// </summary>
@@ -38,9 +41,6 @@ public class ModParserService
     private readonly ConfigService _configService;
     private readonly ReflectionAnalyzer _reflectionAnalyzer;
     private Dictionary<string, HashSet<string>>? _reflectionMap;
-
-    // 性能优化：版本路径缓存（文件路径 -> 版本号）
-    private Dictionary<string, string>? _versionCache;
 
     // 构造函数：必须提供反射分析器和配置服务
     public ModParserService(ReflectionAnalyzer reflectionAnalyzer, ConfigService configService)
@@ -65,7 +65,7 @@ public class ModParserService
         Logger.Info("========================================");
 
         // 第一步：加载类型定义（Core + Mod DLL）
-        Logger.Info("步骤 1/3: 加载类型定义...");
+        Logger.Info("步骤 1/4: 加载类型定义...");
         _reflectionMap = TryAnalyzeModAssemblies(modPath);
 
         if (_reflectionMap == null || _reflectionMap.Count == 0)
@@ -91,28 +91,28 @@ public class ModParserService
 
         // 第三步：扫描并解析 XML 文件（模拟 RimWorld 加载 Defs）
         Logger.Info("步骤 3/4: 扫描 Defs XML 文件...");
+        var loadFolders = ResolveLoadFoldersForScan(modPath);
+        Logger.Info($"加载目录解析完成: {loadFolders.Count} 个");
+        foreach (var loadFolder in loadFolders)
+        {
+            Logger.Debug($"[LoadFolder] {loadFolder.RelativePath} (版本: {loadFolder.Version})");
+        }
 
-        // 【重构】使用递归遍历（带黑名单剪枝）收集所有 XML 文件
-        var allXmlFiles = new ConcurrentBag<string>();
-        CollectXmlFilesRecursively(modPath, allXmlFiles);
-
-        int totalXmlFiles = allXmlFiles.Count;
+        var defXmlEntries = CollectDefsXmlEntries(loadFolders);
+        int totalXmlFiles = defXmlEntries.Count;
         int processedFiles = 0;
         int skippedFiles = 0;
         int validDefFiles = 0;
-        Logger.Info($"找到 {totalXmlFiles} 个 XML 文件");
-
-        // [性能优化] 步骤 2.5/4: 构建版本路径缓存
-        Logger.Debug("步骤 2.5/4: 构建版本路径缓存...");
-        _versionCache = BuildVersionCache(modPath);
+        Logger.Info($"找到 {totalXmlFiles} 个 Defs XML 文件");
 
         // 优化：并行处理 XML 文件，使用 ConcurrentBag 线程安全收集结果
         var itemsConcurrent = new System.Collections.Concurrent.ConcurrentBag<TranslationItem>();
         object lockObj = new object();
 
         // 【重构】并行处理 XML 文件，带根节点验证
-        Parallel.ForEach(allXmlFiles, file =>
+        Parallel.ForEach(defXmlEntries, entry =>
         {
+            var file = entry.FilePath;
             try
             {
                 // 【新增】步骤 1：快速验证根节点类型（最小代价）
@@ -137,10 +137,7 @@ public class ModParserService
                 var doc = XDocument.Load(file);
                 if (doc.Root == null) return;
 
-                // [性能优化] 从缓存获取版本号，O(1) 查找
-                string version = _versionCache != null && _versionCache.TryGetValue(file, out var cachedVer)
-                    ? cachedVer
-                    : GetVersionFromPath(file);
+                string version = entry.Version;
 
                 // 优化：直接遍历元素，避免 ToList() 内存分配
                 var units = extractor.Extract(doc.Root.Elements(), file, version);
@@ -193,7 +190,7 @@ public class ModParserService
 
         // 第四步：扫描 Keyed 文件
         Logger.Info("步骤 4/4: 扫描 Keyed 文件...");
-        var keyedItems = ScanKeyedFiles(modPath);
+        var keyedItems = ScanKeyedFiles(loadFolders);
         items.AddRange(keyedItems);
 
         Logger.Info("========================================");
@@ -293,72 +290,269 @@ public class ModParserService
         return items;
     }
 
+    private readonly record struct LoadFolderContext(string FolderPath, string RelativePath, string Version);
+    private readonly record struct ScanFileEntry(string FilePath, string Version);
+
     /// <summary>
-    /// [性能优化] 预构建版本路径缓存
-    /// 将文件路径映射到版本号，避免重复的正则匹配
+    /// 解析当前 Mod 实际参与加载的目录集合（近似对齐 foldersToLoadDescendingOrder）。
     /// </summary>
-    private Dictionary<string, string> BuildVersionCache(string modPath)
+    private List<LoadFolderContext> ResolveLoadFoldersForScan(string modPath)
     {
-        var cache = new Dictionary<string, string>();
-        var versionDirs = new List<(string path, string version)>();
+        var result = new List<LoadFolderContext>();
+        var seenFolders = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var knownPackageIds = GetLikelyActivePackageIds(modPath);
 
-        // 1. 检查根目录下的 Defs 和 Patches
-        var rootDefsDir = Path.Combine(modPath, "Defs");
-        var rootPatchesDir = Path.Combine(modPath, "Patches");
-
-        if (Directory.Exists(rootDefsDir))
+        void TryAddFolder(string relativePath, string source)
         {
-            versionDirs.Add((rootDefsDir, ""));
+            var normalized = NormalizeRelativePath(relativePath);
+            var isRoot = string.IsNullOrEmpty(normalized) || normalized == ".";
+            var folderPath = isRoot ? modPath : Path.Combine(modPath, normalized);
+            if (!Directory.Exists(folderPath))
+            {
+                return;
+            }
+
+            var fullPath = Path.GetFullPath(folderPath);
+            if (!seenFolders.Add(fullPath))
+            {
+                return;
+            }
+
+            var folderVersion = InferVersionFromRelativePath(normalized);
+            result.Add(new LoadFolderContext(
+                fullPath,
+                isRoot ? "." : normalized,
+                folderVersion));
+            Logger.Debug($"[LoadFolders] + {relativePath} (来源: {source}, 版本: {folderVersion})");
         }
-        if (Directory.Exists(rootPatchesDir))
+
+        // 1) 解析 LoadFolders.xml（若存在）
+        var loadFoldersFile = Path.Combine(modPath, "LoadFolders.xml");
+        if (File.Exists(loadFoldersFile))
         {
-            versionDirs.Add((rootPatchesDir, ""));
+            foreach (var (relativePath, conditionMatched) in ParseLoadFoldersXml(loadFoldersFile, knownPackageIds))
+            {
+                if (!conditionMatched)
+                {
+                    Logger.Debug($"[LoadFolders] 条件未命中，仍保留目录（避免漏扫）: {relativePath}");
+                }
+
+                TryAddFolder(relativePath, "LoadFolders.xml");
+            }
         }
 
-        // 2. 检查版本目录下的 Defs 和 Patches
-        foreach (var versionDir in Directory.EnumerateDirectories(modPath, "*", SearchOption.TopDirectoryOnly))
-        {
-            var dirName = Path.GetFileName(versionDir);
+        // 2) 版本目录（按版本号降序）
+        var versionDirectories = Directory
+            .EnumerateDirectories(modPath, "*", SearchOption.TopDirectoryOnly)
+            .Select(Path.GetFileName)
+            .Where(name => !string.IsNullOrWhiteSpace(name) && VersionDirRegex.IsMatch(name))
+            .OrderByDescending(ParseVersionDirectory)
+            .ToList();
 
-            // 跳过黑名单目录
-            if (DirectoryBlacklist.Contains(dirName))
+        foreach (var versionDir in versionDirectories)
+        {
+            TryAddFolder(versionDir!, "VersionDir");
+        }
+
+        // 3) Common 目录
+        TryAddFolder("Common", "Default");
+
+        // 4) 根目录
+        TryAddFolder(".", "Default");
+
+        return result;
+    }
+
+    private static List<(string RelativePath, bool ConditionMatched)> ParseLoadFoldersXml(
+        string loadFoldersPath,
+        HashSet<string> knownPackageIds)
+    {
+        var result = new List<(string RelativePath, bool ConditionMatched)>();
+
+        try
+        {
+            var doc = XDocument.Load(loadFoldersPath);
+            if (doc.Root == null)
+            {
+                return result;
+            }
+
+            foreach (var item in doc.Descendants().Where(x => x.Name.LocalName.Equals("li", StringComparison.OrdinalIgnoreCase)))
+            {
+                var relativePath = item.Value?.Trim();
+                if (string.IsNullOrWhiteSpace(relativePath))
+                {
+                    continue;
+                }
+
+                var conditionMatched = EvaluateLoadFolderConditions(item, knownPackageIds);
+                result.Add((relativePath, conditionMatched));
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.Warning($"解析 LoadFolders.xml 失败: {ex.Message}");
+        }
+
+        return result;
+    }
+
+    private static bool EvaluateLoadFolderConditions(XElement folderElement, HashSet<string> knownPackageIds)
+    {
+        bool hasCondition = false;
+        bool matched = true;
+
+        var ifModActive = folderElement.Attribute("IfModActive")?.Value;
+        if (!string.IsNullOrWhiteSpace(ifModActive))
+        {
+            hasCondition = true;
+            var packages = SplitPackageIds(ifModActive);
+            matched &= packages.Any(id => knownPackageIds.Contains(id));
+        }
+
+        var ifModActiveAll = folderElement.Attribute("IfModActiveAll")?.Value;
+        if (!string.IsNullOrWhiteSpace(ifModActiveAll))
+        {
+            hasCondition = true;
+            var packages = SplitPackageIds(ifModActiveAll);
+            matched &= packages.All(id => knownPackageIds.Contains(id));
+        }
+
+        var ifModNotActive = folderElement.Attribute("IfModNotActive")?.Value;
+        if (!string.IsNullOrWhiteSpace(ifModNotActive))
+        {
+            hasCondition = true;
+            var packages = SplitPackageIds(ifModNotActive);
+            matched &= packages.All(id => !knownPackageIds.Contains(id));
+        }
+
+        return !hasCondition || matched;
+    }
+
+    private static string[] SplitPackageIds(string value)
+    {
+        return value
+            .Split(new[] { ',', ';', '|', ' ' }, StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+    }
+
+    private static Version ParseVersionDirectory(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return new Version(0, 0);
+        }
+
+        return Version.TryParse(value, out var version)
+            ? version
+            : new Version(0, 0);
+    }
+
+    private static string NormalizeRelativePath(string relativePath)
+    {
+        return (relativePath ?? string.Empty)
+            .Replace('\\', '/')
+            .Trim()
+            .TrimStart('/')
+            .TrimEnd('/');
+    }
+
+    private static string InferVersionFromRelativePath(string relativePath)
+    {
+        if (string.IsNullOrWhiteSpace(relativePath))
+        {
+            return string.Empty;
+        }
+
+        var firstSegment = NormalizeRelativePath(relativePath).Split('/')[0];
+        return VersionDirRegex.IsMatch(firstSegment) ? firstSegment : string.Empty;
+    }
+
+    private static HashSet<string> GetLikelyActivePackageIds(string modPath)
+    {
+        var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
+        {
+            // Core 包通常始终处于启用状态
+            "ludeon.rimworld"
+        };
+
+        var aboutPath = Path.Combine(modPath, "About", "About.xml");
+        if (!File.Exists(aboutPath))
+        {
+            return result;
+        }
+
+        try
+        {
+            var doc = XDocument.Load(aboutPath);
+            if (doc.Root == null)
+            {
+                return result;
+            }
+
+            var packageId = doc.Root.Element("packageId")?.Value?.Trim();
+            if (!string.IsNullOrWhiteSpace(packageId))
+            {
+                result.Add(packageId);
+            }
+
+            var dependencies = doc.Root
+                .Element("modDependencies")?
+                .Elements("li")
+                .Select(li => li.Element("packageId")?.Value?.Trim())
+                .Where(id => !string.IsNullOrWhiteSpace(id));
+
+            if (dependencies != null)
+            {
+                foreach (var dependency in dependencies)
+                {
+                    result.Add(dependency!);
+                }
+            }
+        }
+        catch (Exception ex)
+        {
+            Logger.Warning($"读取 About.xml 依赖信息失败: {ex.Message}");
+        }
+
+        return result;
+    }
+
+    /// <summary>
+    /// 按加载目录顺序收集 Defs XML（同版本+同相对路径只保留首个，模拟同模组文件去重语义）。
+    /// </summary>
+    private List<ScanFileEntry> CollectDefsXmlEntries(IReadOnlyList<LoadFolderContext> loadFolders)
+    {
+        var entries = new List<ScanFileEntry>();
+        var seenFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var loadFolder in loadFolders)
+        {
+            var defsDir = Path.Combine(loadFolder.FolderPath, "Defs");
+            if (!Directory.Exists(defsDir))
             {
                 continue;
             }
 
-            if (VersionDirRegex.IsMatch(dirName) ||
-                dirName.Equals("Common", StringComparison.OrdinalIgnoreCase))
-            {
-                var versionDefsDir = Path.Combine(versionDir, "Defs");
-                var versionPatchesDir = Path.Combine(versionDir, "Patches");
+            var xmlFiles = new ConcurrentBag<string>();
+            CollectXmlFilesRecursively(defsDir, xmlFiles);
 
-                if (Directory.Exists(versionDefsDir))
+            foreach (var file in xmlFiles.OrderBy(x => x, StringComparer.OrdinalIgnoreCase))
+            {
+                var relativePath = NormalizeRelativePath(Path.GetRelativePath(loadFolder.FolderPath, file));
+                var dedupeKey = $"{loadFolder.Version}|{relativePath}";
+                if (!seenFiles.Add(dedupeKey))
                 {
-                    versionDirs.Add((versionDefsDir, dirName));
+                    Logger.Debug($"[Defs 去重跳过] {relativePath} (版本: {loadFolder.Version})");
+                    continue;
                 }
-                if (Directory.Exists(versionPatchesDir))
-                {
-                    versionDirs.Add((versionPatchesDir, dirName));
-                }
+
+                entries.Add(new ScanFileEntry(file, loadFolder.Version));
             }
         }
 
-        // 3. 为每个目录下的 XML 文件缓存版本号（使用带黑名单的递归遍历）
-        foreach (var (dirPath, version) in versionDirs)
-        {
-            // 使用递归遍历，跳过黑名单目录
-            var subDirFiles = new ConcurrentBag<string>();
-            CollectXmlFilesRecursively(dirPath, subDirFiles);
-
-            // 缓存版本号
-            foreach (var file in subDirFiles)
-            {
-                cache[file] = version;
-            }
-        }
-
-        Logger.Debug($"[性能优化] 版本缓存构建完成: {cache.Count} 个文件");
-        return cache;
+        return entries;
     }
 
     /// <summary>
@@ -521,68 +715,74 @@ public class ModParserService
     /// <summary>
     /// 扫描 Keyed 文件目录
     /// </summary>
-    private List<TranslationItem> ScanKeyedFiles(string modPath)
+    private List<TranslationItem> ScanKeyedFiles(IReadOnlyList<LoadFolderContext> loadFolders)
     {
         Logger.Info($"[Keyed 扫描] 开始扫描 Keyed 文件...");
 
         var items = new List<TranslationItem>();
-        var keyedDirs = new List<(string path, string version)>();
+        var seenFiles = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
-        // 1. 检查根目录下的 Languages/English/Keyed
-        var rootKeyedDir = Path.Combine(modPath, "Languages", "English", "Keyed");
-        if (Directory.Exists(rootKeyedDir))
-        {
-            Logger.Debug($"[Keyed 扫描] 找到根目录 Keyed: {rootKeyedDir}");
-            keyedDirs.Add((rootKeyedDir, ""));
-        }
-
-        // 2. 检查版本目录下的 Languages/English/Keyed
-        var versionDirs = Directory.EnumerateDirectories(modPath, "*", SearchOption.TopDirectoryOnly);
-        foreach (var versionDir in versionDirs)
-        {
-            var dirName = Path.GetFileName(versionDir);
-            if (VersionDirRegex.IsMatch(dirName) ||
-                dirName.Equals("Common", StringComparison.OrdinalIgnoreCase))
-            {
-                var versionKeyedDir = Path.Combine(versionDir, "Languages", "English", "Keyed");
-                if (Directory.Exists(versionKeyedDir))
-                {
-                    Logger.Debug($"[Keyed 扫描] 找到版本目录 Keyed: {versionKeyedDir}");
-                    keyedDirs.Add((versionKeyedDir, dirName));
-                }
-            }
-        }
-
-        if (keyedDirs.Count == 0)
-        {
-            Logger.Info("未找到 Keyed 目录");
-            return items;
-        }
-
-        Logger.Info($"找到 {keyedDirs.Count} 个 Keyed 目录");
-
-        // 3. 解析每个目录下的 XML 文件
         int processedFiles = 0;
-        foreach (var (keyedDir, version) in keyedDirs)
+        foreach (var loadFolder in loadFolders)
         {
-            Logger.Debug($"[Keyed 扫描] 正在处理目录: {keyedDir} (版本: {version})");
-            // 优化：使用 EnumerateFiles
-            var xmlFiles = Directory.EnumerateFiles(keyedDir, "*.xml", SearchOption.AllDirectories);
-            foreach (var file in xmlFiles)
+            foreach (var languageDir in ResolveEnglishLanguageFolders(loadFolder.FolderPath))
             {
-                Logger.Debug($"[Keyed 扫描] 正在解析文件: {Path.GetFileName(file)}");
-                var fileItems = ParseKeyedFile(file, version);
-                items.AddRange(fileItems);
-                if (fileItems.Count > 0)
+                foreach (var keyedFolderName in KeyedFolderNames)
                 {
-                    processedFiles++;
-                    Logger.Debug($"[Keyed 扫描] {Path.GetFileName(file)}: 提取 {fileItems.Count} 个翻译项");
+                    var keyedDir = Path.Combine(languageDir, keyedFolderName);
+                    if (!Directory.Exists(keyedDir))
+                    {
+                        continue;
+                    }
+
+                    Logger.Debug($"[Keyed 扫描] 正在处理目录: {keyedDir} (版本: {loadFolder.Version})");
+                    foreach (var file in Directory.EnumerateFiles(keyedDir, "*.xml", SearchOption.AllDirectories)
+                                 .OrderBy(x => x, StringComparer.OrdinalIgnoreCase))
+                    {
+                        var relativePath = NormalizeRelativePath(Path.GetRelativePath(loadFolder.FolderPath, file));
+                        var dedupeKey = $"{loadFolder.Version}|{relativePath}";
+                        if (!seenFiles.Add(dedupeKey))
+                        {
+                            Logger.Debug($"[Keyed 去重跳过] {relativePath} (版本: {loadFolder.Version})");
+                            continue;
+                        }
+
+                        var fileItems = ParseKeyedFile(file, loadFolder.Version);
+                        items.AddRange(fileItems);
+                        if (fileItems.Count > 0)
+                        {
+                            processedFiles++;
+                            Logger.Debug($"[Keyed 扫描] {Path.GetFileName(file)}: 提取 {fileItems.Count} 个翻译项");
+                        }
+                    }
                 }
             }
         }
 
         Logger.Info($"Keyed 文件处理完成: {processedFiles} 个文件，{items.Count} 个翻译项");
         return items;
+    }
+
+    private static IEnumerable<string> ResolveEnglishLanguageFolders(string loadFolderPath)
+    {
+        var languagesRoot = Path.Combine(loadFolderPath, "Languages");
+        if (!Directory.Exists(languagesRoot))
+        {
+            return Enumerable.Empty<string>();
+        }
+
+        var englishDir = Path.Combine(languagesRoot, "English");
+        if (Directory.Exists(englishDir))
+        {
+            return new[] { englishDir };
+        }
+
+        // 兼容 legacyFolderName 场景：当不存在 English 时，回退到名称中包含 English 的目录。
+        return Directory
+            .EnumerateDirectories(languagesRoot, "*", SearchOption.TopDirectoryOnly)
+            .Where(dir => Path.GetFileName(dir).Contains("English", StringComparison.OrdinalIgnoreCase))
+            .OrderBy(x => x, StringComparer.OrdinalIgnoreCase)
+            .ToList();
     }
 
     /// <summary>
@@ -604,15 +804,25 @@ public class ModParserService
                 return items;
             }
 
+            var seenKeysInFile = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
             foreach (var element in doc.Root.Elements())
             {
                 // 黑名单过滤
                 if (IsKeyedElementFiltered(element)) continue;
 
                 string key = element.Name.LocalName;
-                string text = element.Value?.Trim() ?? "";
+                if (!seenKeysInFile.Add(key))
+                {
+                    Logger.Warning($"Keyed 文件内重复 Key，已跳过后续项: {key} ({Path.GetFileName(filePath)})");
+                    continue;
+                }
+
+                string text = (element.Value ?? string.Empty)
+                    .Replace("\\n", "\n")
+                    .Trim();
 
                 if (string.IsNullOrWhiteSpace(text)) continue;
+                if (text.Equals("TODO", StringComparison.OrdinalIgnoreCase)) continue;
 
                 items.Add(new TranslationItem
                 {

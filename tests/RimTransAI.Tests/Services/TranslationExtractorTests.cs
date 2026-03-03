@@ -134,4 +134,66 @@ public class TranslationExtractorTests
     }
 
     #endregion
+
+    #region 列表提取门控测试
+
+    [Fact]
+    public void Extract_WithUnsafeCustomList_DoesNotExtractLi()
+    {
+        // Arrange
+        var extractor = new TranslationExtractor(_emptyReflectionMap);
+        var def = new XElement("ThingDef",
+            new XElement("defName", "TestItem"),
+            new XElement("customStrings",
+                new XElement("li", "Hello from custom list")));
+        var defs = new List<XElement> { def };
+
+        // Act
+        var results = extractor.Extract(defs, "test.xml", "1.5");
+
+        // Assert
+        results.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void Extract_WithSafeTextList_ExtractsLiItems()
+    {
+        // Arrange
+        var extractor = new TranslationExtractor(_emptyReflectionMap);
+        var def = new XElement("ThingDef",
+            new XElement("defName", "TestItem"),
+            new XElement("rulesStrings",
+                new XElement("li", "Rule A"),
+                new XElement("li", "Rule B")));
+        var defs = new List<XElement> { def };
+
+        // Act
+        var results = extractor.Extract(defs, "test.xml", "1.5");
+
+        // Assert
+        results.Should().HaveCount(2);
+        results.Should().Contain(r => r.Key == "TestItem.rulesStrings.0" && r.OriginalText == "Rule A");
+        results.Should().Contain(r => r.Key == "TestItem.rulesStrings.1" && r.OriginalText == "Rule B");
+    }
+
+    [Fact]
+    public void Extract_WithLabelShortField_ExtractsValue()
+    {
+        // Arrange
+        var extractor = new TranslationExtractor(_emptyReflectionMap);
+        var def = new XElement("ThingDef",
+            new XElement("defName", "TestItem"),
+            new XElement("labelShort", "Short Label"));
+        var defs = new List<XElement> { def };
+
+        // Act
+        var results = extractor.Extract(defs, "test.xml", "1.5");
+
+        // Assert
+        results.Should().ContainSingle();
+        results[0].Key.Should().Be("TestItem.labelShort");
+        results[0].OriginalText.Should().Be("Short Label");
+    }
+
+    #endregion
 }

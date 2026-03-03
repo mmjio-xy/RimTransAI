@@ -27,6 +27,7 @@ public class AppConfig
     public bool EnableMultiThreadTranslation { get; set; } = false; // 是否启用多线程翻译
     public int MaxThreads { get; set; } = 4; // 最大并发线程数（1-10）
     public int ThreadIntervalMs { get; set; } = 100; // 并发请求间隔（毫秒）
+    public int ApiRequestTimeoutSeconds { get; set; } = 480; // 单次 API 请求超时（秒）
 
     // ========== 备份配置 ==========
     /// <summary>

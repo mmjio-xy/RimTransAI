@@ -26,6 +26,7 @@ public class AppJsonContextTests
             ApiUrl = "https://api.example.com",
             ApiKey = "test-key",
             TargetModel = "test-model",
+            ApiRequestTimeoutSeconds = 720,
             ModSourceFolders = [source]
         };
 
@@ -37,6 +38,7 @@ public class AppJsonContextTests
         json.Should().Contain("\"DisplayName\"");
         json.Should().Contain("\"FolderPath\"");
         json.Should().Contain("\"IconKey\"");
+        json.Should().Contain("\"ApiRequestTimeoutSeconds\"");
         json.Should().NotContain("\"IconKind\"");
 
         restored.Should().NotBeNull();
@@ -46,5 +48,6 @@ public class AppJsonContextTests
         restored.ModSourceFolders[0].FolderPath.Should().Be(@"D:\RimWorld\Mods");
         restored.ModSourceFolders[0].IconKey.Should().Be("FolderMultipleOutline");
         restored.ModSourceFolders[0].IsEnabled.Should().BeTrue();
+        restored.ApiRequestTimeoutSeconds.Should().Be(720);
     }
 }

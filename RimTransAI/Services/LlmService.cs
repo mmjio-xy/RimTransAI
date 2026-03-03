@@ -3,6 +3,7 @@ using System.Collections.Generic;
 using System.Net.Http;
 using System.Text;
 using System.Text.Json;
+using System.Threading;
 using System.Threading.Tasks;
 using RimTransAI.Models;
 
@@ -12,10 +13,12 @@ public class LlmService : IDisposable
 {
     private const string ChatCompletionsPath = "/v1/chat/completions";
     private const string V1Path = "/v1";
+    private const int DefaultRequestTimeoutSeconds = 480;
 
     private static readonly HttpClient SharedHttpClient = new HttpClient
     {
-        Timeout = TimeSpan.FromMinutes(2) // 翻译可能会慢，超时设长一点
+        // 统一改为由每次请求的 CancellationToken 控制超时，避免固定 2 分钟导致长批次频繁超时
+        Timeout = Timeout.InfiniteTimeSpan
     };
 
     private readonly HttpClient _httpClient;
@@ -54,11 +57,16 @@ public class LlmService : IDisposable
     string apiUrl,
     string model,
     string targetLang = "Simplified Chinese",
-    string? customPrompt = null)
+    string? customPrompt = null,
+    int requestTimeoutSeconds = DefaultRequestTimeoutSeconds,
+    CancellationToken cancellationToken = default)
     {
         if (sourceTexts.Count == 0) return new Dictionary<string, string>();
 
         var requestUrl = NormalizeApiUrl(apiUrl);
+        var timeoutSeconds = Math.Clamp(requestTimeoutSeconds, 30, 1800);
+        using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
+        timeoutCts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
 
         // 1. 序列化 User Content (这是一个 Dictionary)
         // 使用 Context 序列化字典
@@ -87,60 +95,76 @@ public class LlmService : IDisposable
         var jsonBody = JsonSerializer.Serialize(requestBodyObj, AppJsonContext.Default.LlmRequest);
 
         // 4. 发送请求
-        var request = new HttpRequestMessage(HttpMethod.Post, requestUrl);
+        using var request = new HttpRequestMessage(HttpMethod.Post, requestUrl);
         request.Headers.Add("Authorization", $"Bearer {apiKey}");
         request.Content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
 
-        var response = await _httpClient.SendAsync(request);
-        response.EnsureSuccessStatusCode();
-
-        // 5. 解析响应 (这里稍微麻烦点，因为我们没定义 Response 类，可以暂时用 JsonNode)
-        // 1. 先作为普通字符串读取出来
-        var rawResponse = await response.Content.ReadAsStringAsync();
-
-        // 2. 使用生成的 AOT 上下文手动反序列化
-        var jsonResponse = JsonSerializer.Deserialize(
-            rawResponse,
-            AppJsonContext.Default.JsonObject
-        );
-        var content = jsonResponse?["choices"]?[0]?["message"]?["content"]?.ToString();
-
-        if (string.IsNullOrEmpty(content)) return new Dictionary<string, string>();
-
+        HttpResponseMessage response;
         try
         {
-            // 清理可能的 markdown 代码块标记（只在开头和结尾清理）
-            content = content.Trim();
-            if (content.StartsWith("```json"))
-            {
-                content = content.Substring(7); // 移除 "```json"
-            }
-            else if (content.StartsWith("```"))
-            {
-                content = content.Substring(3); // 移除 "```"
-            }
-
-            if (content.EndsWith("```"))
-            {
-                content = content.Substring(0, content.Length - 3); // 移除结尾的 "```"
-            }
-
-            content = content.Trim();
-
-            // 使用 Context 反序列化结果字典
-            return JsonSerializer.Deserialize(content, AppJsonContext.Default.DictionaryStringString)
-                   ?? new Dictionary<string, string>();
+            response = await _httpClient.SendAsync(request, timeoutCts.Token);
         }
-        catch (JsonException ex)
+        catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && timeoutCts.IsCancellationRequested)
         {
-            Logger.Error($"JSON解析失败: {ex.Message}");
-            Logger.Error($"响应内容: {content}");
-            return new Dictionary<string, string>();
+            throw new TimeoutException($"API 请求超时（{timeoutSeconds} 秒）");
         }
-        catch (Exception ex)
+
+        using (response)
         {
-            Logger.Error($"翻译结果处理失败: {ex.GetType().Name} - {ex.Message}");
-            return new Dictionary<string, string>();
+            response.EnsureSuccessStatusCode();
+
+            // 5. 解析响应 (这里稍微麻烦点，因为我们没定义 Response 类，可以暂时用 JsonNode)
+            // 1. 先作为普通字符串读取出来
+            var rawResponse = await response.Content.ReadAsStringAsync(timeoutCts.Token);
+
+            // 2. 使用生成的 AOT 上下文手动反序列化
+            var jsonResponse = JsonSerializer.Deserialize(
+                rawResponse,
+                AppJsonContext.Default.JsonObject
+            );
+            var content = jsonResponse?["choices"]?[0]?["message"]?["content"]?.ToString();
+
+            if (string.IsNullOrEmpty(content)) return new Dictionary<string, string>();
+
+            try
+            {
+                // 清理可能的 markdown 代码块标记（只在开头和结尾清理）
+                content = content.Trim();
+                if (content.StartsWith("```json"))
+                {
+                    content = content.Substring(7); // 移除 "```json"
+                }
+                else if (content.StartsWith("```"))
+                {
+                    content = content.Substring(3); // 移除 "```"
+                }
+
+                if (content.EndsWith("```"))
+                {
+                    content = content.Substring(0, content.Length - 3); // 移除结尾的 "```"
+                }
+
+                content = content.Trim();
+
+                // 使用 Context 反序列化结果字典
+                return JsonSerializer.Deserialize(content, AppJsonContext.Default.DictionaryStringString)
+                       ?? new Dictionary<string, string>();
+            }
+            catch (JsonException ex)
+            {
+                Logger.Error($"JSON解析失败: {ex.Message}");
+                Logger.Error($"响应内容: {content}");
+                return new Dictionary<string, string>();
+            }
+            catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && timeoutCts.IsCancellationRequested)
+            {
+                throw new TimeoutException($"API 响应读取超时（{timeoutSeconds} 秒）");
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"翻译结果处理失败: {ex.GetType().Name} - {ex.Message}");
+                return new Dictionary<string, string>();
+            }
         }
     }
 

@@ -40,7 +40,7 @@ public class TranslationExtractor
         "path", "file", "icon", "graphic",
         "setting", "config", "worker", "link", "curve",
         "size", "color", "mask", "effect", "cost", "stat",
-        "tex", "coordinates", "offset", "labelshort",
+        "tex", "coordinates", "offset",
 
         // 【新增】组件键名
         "key"
@@ -50,7 +50,7 @@ public class TranslationExtractor
     private static readonly string[] BlacklistKeywords =
     {
         // 身份标识
-        "defname", "def",
+        "defname",
 
         // 资源路径
         "path", "texpath", "texture", "iconpath", "shader",
@@ -301,7 +301,7 @@ public class TranslationExtractor
                 }
             }
             // --- 场景 B: 列表项 (li) ---
-            else if (!child.HasElements)
+            else if (!child.HasElements && allowListExtraction)
             {
                 // 【关键】检查父级标签是否在技术列表黑名单中
                 // 解决 "Translated non-System.String list item" 错误

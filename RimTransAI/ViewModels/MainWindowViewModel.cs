@@ -553,7 +553,9 @@ public partial class MainWindowViewModel : ViewModelBase
                             config.TargetLanguage,
                             config.UseCustomPrompt && !string.IsNullOrWhiteSpace(config.CustomPrompt)
                                 ? config.CustomPrompt
-                                : null
+                                : null,
+                            config.ApiRequestTimeoutSeconds,
+                            cancellationToken
                         );
 
                         foreach (var group in batch)
@@ -649,6 +651,7 @@ public partial class MainWindowViewModel : ViewModelBase
                 config.ApiUrl,
                 config.TargetModel,
                 config.TargetLanguage,
+                config.ApiRequestTimeoutSeconds,
                 config.UseCustomPrompt && !string.IsNullOrWhiteSpace(config.CustomPrompt) ? config.CustomPrompt : null,
                 cancellationToken);
         }

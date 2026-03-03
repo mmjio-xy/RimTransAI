@@ -36,6 +36,7 @@ public class MultiThreadedTranslationService : IDisposable
         string apiUrl,
         string model,
         string targetLang,
+        int requestTimeoutSeconds,
         string? customPrompt = null,
         CancellationToken cancellationToken = default)
     {
@@ -57,6 +58,7 @@ public class MultiThreadedTranslationService : IDisposable
                 apiUrl,
                 model,
                 targetLang,
+                requestTimeoutSeconds,
                 customPrompt,
                 cancellationToken))
             .ToList();
@@ -80,6 +82,7 @@ public class MultiThreadedTranslationService : IDisposable
         string apiUrl,
         string model,
         string targetLang,
+        int requestTimeoutSeconds,
         string? customPrompt,
         CancellationToken cancellationToken)
     {
@@ -95,7 +98,9 @@ public class MultiThreadedTranslationService : IDisposable
                 apiUrl,
                 model,
                 targetLang,
-                customPrompt), cancellationToken);
+                customPrompt,
+                requestTimeoutSeconds,
+                ct), cancellationToken);
 
             // 应用翻译结果
             ApplyTranslations(batch, translations);
