@@ -241,6 +241,38 @@ public class DefFieldExtractionEngineTests
     }
 
     [Fact]
+    public void Extract_WhenConflictHappens_UpdatesDiagnostics()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            var first = Path.Combine(root, "a.xml");
+            var second = Path.Combine(root, "b.xml");
+            File.WriteAllText(first, "<LanguageData><Greeting>Hello</Greeting></LanguageData>");
+            File.WriteAllText(second, "<LanguageData><Greeting>Hi</Greeting></LanguageData>");
+
+            var sources = new XmlSourceCollection();
+            sources.KeyedFiles.Add(new XmlSourceFile(first, "Languages/English/Keyed/a.xml", "1.5", "Keyed", 0));
+            sources.KeyedFiles.Add(new XmlSourceFile(second, "Languages/English/Keyed/b.xml", "1.5", "Keyed", 1));
+
+            var engine = new DefFieldExtractionEngine();
+            var result = engine.Extract(
+                new ScanContext(root, "English", "English", [], "1.5"),
+                sources,
+                new Dictionary<string, HashSet<string>>());
+
+            result.Should().ContainSingle(x => x.Key == "Greeting" && x.OriginalText == "Hi");
+            engine.LastDiagnostics.ConflictCount.Should().BeGreaterThan(0);
+            engine.LastDiagnostics.ErrorCount.Should().Be(0);
+            engine.LastDiagnostics.ExtractedItemCount.Should().Be(result.Count);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
     public void Extract_DefsReflectionMapSupportsBackingFieldName()
     {
         var root = CreateTempRoot();

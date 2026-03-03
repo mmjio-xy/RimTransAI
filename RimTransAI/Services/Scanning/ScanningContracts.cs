@@ -57,6 +57,27 @@ public sealed class ScanDiagnostics
     public int StringFileCount { get; set; }
 
     public int WordInfoFileCount { get; set; }
+
+    public int SourceFileAttemptCount { get; set; }
+
+    public int SourceFileRegisteredCount { get; set; }
+
+    public int SourceFileDeduplicatedCount { get; set; }
+
+    public int ExtractedItemCount { get; set; }
+
+    public int ExtractionConflictCount { get; set; }
+
+    public int ExtractionErrorCount { get; set; }
+}
+
+public sealed class ExtractionDiagnostics
+{
+    public int ExtractedItemCount { get; set; }
+
+    public int ConflictCount { get; set; }
+
+    public int ErrorCount { get; set; }
 }
 
 public sealed class ScanResult

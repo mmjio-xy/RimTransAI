@@ -19,6 +19,7 @@ public sealed class DefFieldExtractionEngine
     private readonly DefPathBuilder _defPathBuilder;
     private readonly FieldExtractionRuleSet _ruleSet;
     private readonly ExtractionConflictPolicy _conflictPolicy;
+    public ExtractionDiagnostics LastDiagnostics { get; private set; } = new();
 
     public DefFieldExtractionEngine(
         DefsSourceParser? defsSourceParser = null,
@@ -44,9 +45,12 @@ public sealed class DefFieldExtractionEngine
         var normalizedReflectionMap = BuildNormalizedReflectionMap(reflectionMap);
         var shortNameMap = BuildShortNameMap(normalizedReflectionMap);
 
+        var diagnostics = new ExtractionDiagnostics();
         var results = new List<TranslationItem>();
-        ExtractDefs(_defsSourceParser, _defPathBuilder, _ruleSet, _conflictPolicy, sources.DefFiles, normalizedReflectionMap, shortNameMap, results);
-        ExtractKeyed(_conflictPolicy, sources.KeyedFiles, results);
+        ExtractDefs(_defsSourceParser, _defPathBuilder, _ruleSet, _conflictPolicy, sources.DefFiles, normalizedReflectionMap, shortNameMap, results, diagnostics);
+        ExtractKeyed(_conflictPolicy, sources.KeyedFiles, results, diagnostics);
+        diagnostics.ExtractedItemCount = results.Count;
+        LastDiagnostics = diagnostics;
         return results;
     }
 
@@ -58,7 +62,8 @@ public sealed class DefFieldExtractionEngine
         IReadOnlyList<XmlSourceFile> defFiles,
         Dictionary<string, HashSet<string>> reflectionMap,
         Dictionary<string, List<string>> shortNameMap,
-        List<TranslationItem> output)
+        List<TranslationItem> output,
+        ExtractionDiagnostics diagnostics)
     {
         var upsert = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
@@ -70,6 +75,7 @@ public sealed class DefFieldExtractionEngine
                 if (!string.IsNullOrWhiteSpace(parseResult.ErrorMessage))
                 {
                     Logger.Warning($"Defs XML 解析失败 {source.FullPath}: {parseResult.ErrorMessage}");
+                    diagnostics.ErrorCount++;
                     continue;
                 }
 
@@ -104,16 +110,19 @@ public sealed class DefFieldExtractionEngine
                         reflectionMap,
                         shortNameMap,
                         output,
-                        upsert);
+                        upsert,
+                        diagnostics);
                 }
             }
             catch (XmlException ex)
             {
                 Logger.Warning($"Defs XML 格式错误 {source.FullPath}: {ex.Message}");
+                diagnostics.ErrorCount++;
             }
             catch (Exception ex)
             {
                 Logger.Error($"解析 Defs 文件出错: {source.FullPath}", ex);
+                diagnostics.ErrorCount++;
             }
         }
     }
@@ -127,7 +136,8 @@ public sealed class DefFieldExtractionEngine
         Dictionary<string, HashSet<string>> reflectionMap,
         Dictionary<string, List<string>> shortNameMap,
         List<TranslationItem> output,
-        Dictionary<string, int> upsert)
+        Dictionary<string, int> upsert,
+        ExtractionDiagnostics diagnostics)
     {
         var extractedKeys = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
 
@@ -192,7 +202,7 @@ public sealed class DefFieldExtractionEngine
                             };
 
                             var dedupeKey = $"defs|{item.DefType}|{item.Version}|{item.Key}";
-                            Upsert(output, upsert, dedupeKey, item, conflictPolicy);
+                            Upsert(output, upsert, dedupeKey, item, conflictPolicy, diagnostics);
                         }
                     }
                 }
@@ -271,7 +281,8 @@ public sealed class DefFieldExtractionEngine
     private static void ExtractKeyed(
         ExtractionConflictPolicy conflictPolicy,
         IReadOnlyList<XmlSourceFile> keyedFiles,
-        List<TranslationItem> output)
+        List<TranslationItem> output,
+        ExtractionDiagnostics diagnostics)
     {
         var upsert = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
 
@@ -297,6 +308,7 @@ public sealed class DefFieldExtractionEngine
                     if (!seenKeysInFile.Add(key))
                     {
                         Logger.Warning($"Keyed 文件内重复 Key，已跳过后续项: {key} ({source.FullPath})");
+                        diagnostics.ConflictCount++;
                         continue;
                     }
 
@@ -325,16 +337,18 @@ public sealed class DefFieldExtractionEngine
                     };
 
                     var dedupeKey = $"keyed|{item.Key}";
-                    Upsert(output, upsert, dedupeKey, item, conflictPolicy);
+                    Upsert(output, upsert, dedupeKey, item, conflictPolicy, diagnostics);
                 }
             }
             catch (XmlException ex)
             {
                 Logger.Warning($"Keyed XML 格式错误 {source.FullPath}: {ex.Message}");
+                diagnostics.ErrorCount++;
             }
             catch (Exception ex)
             {
                 Logger.Error($"解析 Keyed 文件出错: {source.FullPath}", ex);
+                diagnostics.ErrorCount++;
             }
         }
     }
@@ -433,10 +447,12 @@ public sealed class DefFieldExtractionEngine
         Dictionary<string, int> indexMap,
         string key,
         TranslationItem value,
-        ExtractionConflictPolicy conflictPolicy)
+        ExtractionConflictPolicy conflictPolicy,
+        ExtractionDiagnostics diagnostics)
     {
         if (indexMap.TryGetValue(key, out var existingIndex))
         {
+            diagnostics.ConflictCount++;
             if (conflictPolicy == ExtractionConflictPolicy.LastWriteWins)
             {
                 target[existingIndex] = value;

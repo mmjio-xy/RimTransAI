@@ -82,13 +82,21 @@ public class ModParserService
         items.AddRange(scanResult.Items);
 
         Logger.Info(
-            $"扫描诊断: LoadFolders={scanResult.Diagnostics.LoadFolderCount}, " +
-            $"LanguageDirs={scanResult.Diagnostics.LanguageDirectoryCount}, " +
-            $"Defs={scanResult.Diagnostics.DefFileCount}, " +
+            $"阶段 1/3 目录规划: LoadFolders={scanResult.Diagnostics.LoadFolderCount}, " +
+            $"LanguageDirs={scanResult.Diagnostics.LanguageDirectoryCount}");
+        Logger.Info(
+            $"阶段 2/3 文件收集: Defs={scanResult.Diagnostics.DefFileCount}, " +
             $"Keyed={scanResult.Diagnostics.KeyedFileCount}, " +
             $"DefInjected={scanResult.Diagnostics.DefInjectedFileCount}, " +
             $"Strings={scanResult.Diagnostics.StringFileCount}, " +
-            $"WordInfo={scanResult.Diagnostics.WordInfoFileCount}");
+            $"WordInfo={scanResult.Diagnostics.WordInfoFileCount}, " +
+            $"SourceAttempts={scanResult.Diagnostics.SourceFileAttemptCount}, " +
+            $"Registered={scanResult.Diagnostics.SourceFileRegisteredCount}, " +
+            $"Deduplicated={scanResult.Diagnostics.SourceFileDeduplicatedCount}");
+        Logger.Info(
+            $"阶段 3/3 字段提取: Extracted={scanResult.Diagnostics.ExtractedItemCount}, " +
+            $"Conflicts={scanResult.Diagnostics.ExtractionConflictCount}, " +
+            $"Errors={scanResult.Diagnostics.ExtractionErrorCount}");
 
         Logger.Info("========================================");
         Logger.Info("扫描完成");

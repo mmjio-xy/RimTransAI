@@ -39,6 +39,7 @@ public sealed class ScanOrchestrator
         var languageDirectories = _languageDirectoryResolver.Resolve(context, loadFolders);
         var sources = _xmlSourceCollector.Collect(context, loadFolders, languageDirectories, _fileRegistry);
         var items = _defFieldExtractionEngine.Extract(context, sources, reflectionMap);
+        var extractionDiagnostics = _defFieldExtractionEngine.LastDiagnostics;
 
         return new ScanResult
         {
@@ -52,7 +53,13 @@ public sealed class ScanOrchestrator
                 KeyedFileCount = sources.KeyedFiles.Count,
                 DefInjectedFileCount = sources.DefInjectedFiles.Count,
                 StringFileCount = sources.StringFiles.Count,
-                WordInfoFileCount = sources.WordInfoFiles.Count
+                WordInfoFileCount = sources.WordInfoFiles.Count,
+                SourceFileAttemptCount = _fileRegistry.AttemptCount,
+                SourceFileRegisteredCount = _fileRegistry.RegisteredCount,
+                SourceFileDeduplicatedCount = _fileRegistry.DuplicateCount,
+                ExtractedItemCount = extractionDiagnostics.ExtractedItemCount,
+                ExtractionConflictCount = extractionDiagnostics.ConflictCount,
+                ExtractionErrorCount = extractionDiagnostics.ErrorCount
             }
         };
     }

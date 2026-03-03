@@ -64,6 +64,28 @@ RimTransAI/
 tests/RimTransAI.Tests/
 ```
 
+## 扫描架构（重构后）
+
+当前扫描链路由 `ScanOrchestrator` 统一编排：
+
+1. `GameLoadOrderPlanner`：根据 `LoadFolders.xml` 与版本回退规则规划加载目录。
+2. `LanguageDirectoryResolver`：解析语言目录（含 legacy 名称回退）。
+3. `XmlSourceCollector` + `FileRegistry`：收集 `Defs/Keyed/DefInjected/Strings/WordInfo` 并做同作用域去重。
+4. `DefFieldExtractionEngine`：按结构化节点遍历提取字段，输出 `TranslationItem`，并记录提取原因与上下文。
+
+关键扩展点：
+
+- 规则配置：`Services/Scanning/FieldExtractionRules.cs`
+- Defs 结构解析：`Services/Scanning/DefsSourceParser.cs`
+- 路径规范化：`Services/Scanning/DefPathBuilder.cs`
+- 提取冲突策略：`ExtractionConflictPolicy`（`LastWriteWins` / `FirstWriteWins`）
+
+扫描诊断信息（`ScanDiagnostics`）包含：
+
+- 目录与文件计数（LoadFolders/LanguageDirs/Defs/Keyed/DefInjected/Strings/WordInfo）
+- 源文件尝试/注册/去重统计
+- 提取结果统计（提取条目数、冲突数、错误数）
+
 ## 许可证
 
 本项目采用 [GNU GPL v3.0](LICENSE)。

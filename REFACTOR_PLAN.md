@@ -6,7 +6,8 @@
 - 阶段 2：已完成。
 - 阶段 3：已完成（`DefsSourceParser`、`DefPathBuilder`、结构路径遍历与稳定性测试已落地）。
 - 阶段 4：已完成（规则对象化、ReasonCode/SourceContext、冲突策略显式化、`ParseSingleFile` 新引擎切换与阶段测试已落地）。
-- 阶段 5-6：未开始。
+- 阶段 5：已完成（主流程仅走 `ScanOrchestrator`，并补齐阶段化日志与去重/冲突/错误诊断）。
+- 阶段 6：已完成（补齐稳定性与性能烟测、更新 README 扫描架构说明）。
 
 ---
 
