@@ -88,6 +88,7 @@ public class ModParserService
             $"阶段 2/3 文件收集: Defs={scanResult.Diagnostics.DefFileCount}, " +
             $"Keyed={scanResult.Diagnostics.KeyedFileCount}, " +
             $"DefInjected={scanResult.Diagnostics.DefInjectedFileCount}, " +
+            $"Backstories={scanResult.Diagnostics.BackstoryFileCount}, " +
             $"Strings={scanResult.Diagnostics.StringFileCount}, " +
             $"WordInfo={scanResult.Diagnostics.WordInfoFileCount}, " +
             $"SourceAttempts={scanResult.Diagnostics.SourceFileAttemptCount}, " +

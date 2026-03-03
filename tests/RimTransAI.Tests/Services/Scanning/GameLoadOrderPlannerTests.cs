@@ -7,12 +7,14 @@ namespace RimTransAI.Tests.Services.Scanning;
 public class GameLoadOrderPlannerTests
 {
     [Fact]
-    public void Plan_WithoutLoadFolders_UsesExactVersionThenCommonThenRoot()
+    public void Plan_WithoutLoadFolders_UsesAllVersionDirectoriesThenCommonThenRoot()
     {
         var root = CreateTempModRoot();
         try
         {
+            Directory.CreateDirectory(Path.Combine(root, "1.6"));
             Directory.CreateDirectory(Path.Combine(root, "1.5"));
+            Directory.CreateDirectory(Path.Combine(root, "1.4"));
             Directory.CreateDirectory(Path.Combine(root, "Common"));
 
             var planner = new GameLoadOrderPlanner();
@@ -21,11 +23,11 @@ public class GameLoadOrderPlannerTests
                 "English",
                 "English",
                 new HashSet<string>(StringComparer.OrdinalIgnoreCase),
-                "1.5");
+                "1.6");
 
             var plan = planner.Plan(context);
 
-            plan.Select(x => x.RelativePath).Should().ContainInOrder("1.5", "Common", ".");
+            plan.Select(x => x.RelativePath).Should().ContainInOrder("1.6", "1.5", "1.4", "Common", ".");
         }
         finally
         {
@@ -34,7 +36,7 @@ public class GameLoadOrderPlannerTests
     }
 
     [Fact]
-    public void Plan_WithoutLoadFolders_FallsBackToClosestCompatibleVersion()
+    public void Plan_WithoutLoadFolders_WhenCurrentVersionMissing_StillReturnsAllVersionDirectories()
     {
         var root = CreateTempModRoot();
         try
@@ -54,7 +56,7 @@ public class GameLoadOrderPlannerTests
 
             var plan = planner.Plan(context);
 
-            plan.Select(x => x.RelativePath).Should().ContainInOrder("1.4", "Common", ".");
+            plan.Select(x => x.RelativePath).Should().ContainInOrder("1.6", "1.4", "1.3", "Common", ".");
         }
         finally
         {
@@ -104,7 +106,7 @@ public class GameLoadOrderPlannerTests
     }
 
     [Fact]
-    public void Plan_WithLoadFolders_UsesDefaultWhenNoCompatibleVersion()
+    public void Plan_WithLoadFolders_InCoverageMode_AlsoIncludesOtherVersionSections()
     {
         var root = CreateTempModRoot();
         try
@@ -133,7 +135,49 @@ public class GameLoadOrderPlannerTests
 
             var plan = planner.Plan(context);
 
-            plan.Select(x => x.RelativePath).Should().ContainSingle().Which.Should().Be("Common");
+            plan.Select(x => x.RelativePath).Should().ContainInOrder("V2", "Common");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Plan_WithLoadFolders_IncludesEntriesFromMultipleVersionSections()
+    {
+        var root = CreateTempModRoot();
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(root, "1.6"));
+            Directory.CreateDirectory(Path.Combine(root, "1.5"));
+            Directory.CreateDirectory(Path.Combine(root, "Common"));
+
+            File.WriteAllText(Path.Combine(root, "LoadFolders.xml"), """
+                <loadFolders>
+                  <v1.6>
+                    <li>1.6</li>
+                    <li>Common</li>
+                  </v1.6>
+                  <v1.5>
+                    <li>1.5</li>
+                    <li>Common</li>
+                  </v1.5>
+                </loadFolders>
+                """);
+
+            var planner = new GameLoadOrderPlanner();
+            var context = new ScanContext(
+                root,
+                "English",
+                "English",
+                new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+                "1.6");
+
+            var plan = planner.Plan(context);
+
+            plan.Select(x => x.RelativePath).Should().ContainInOrder("Common", "1.6", "1.5");
+            plan.Select(x => x.FullPath).Distinct(StringComparer.OrdinalIgnoreCase).Count().Should().Be(plan.Count);
         }
         finally
         {

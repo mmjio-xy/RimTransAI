@@ -49,6 +49,7 @@ public sealed class DefFieldExtractionEngine
         var results = new List<TranslationItem>();
         ExtractDefs(_defsSourceParser, _defPathBuilder, _ruleSet, _conflictPolicy, sources.DefFiles, normalizedReflectionMap, shortNameMap, results, diagnostics);
         ExtractDefInjected(_conflictPolicy, _defPathBuilder, sources.DefInjectedFiles, results, diagnostics);
+        ExtractBackstories(_conflictPolicy, _defPathBuilder, sources.BackstoryFiles, results, diagnostics);
         ExtractKeyed(_conflictPolicy, sources.KeyedFiles, results, diagnostics);
         diagnostics.ExtractedItemCount = results.Count;
         LastDiagnostics = diagnostics;
@@ -451,6 +452,143 @@ public sealed class DefFieldExtractionEngine
                 diagnostics.ErrorCount++;
             }
         }
+    }
+
+    private static void ExtractBackstories(
+        ExtractionConflictPolicy conflictPolicy,
+        DefPathBuilder defPathBuilder,
+        IReadOnlyList<XmlSourceFile> backstoryFiles,
+        List<TranslationItem> output,
+        ExtractionDiagnostics diagnostics)
+    {
+        var upsert = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var source in backstoryFiles.OrderBy(x => x.Order))
+        {
+            try
+            {
+                var doc = XDocument.Load(source.FullPath);
+                if (doc.Root == null)
+                {
+                    continue;
+                }
+
+                foreach (var backstoryElement in doc.Root.Elements())
+                {
+                    var identifier = backstoryElement.Name.LocalName?.Trim();
+                    if (string.IsNullOrWhiteSpace(identifier))
+                    {
+                        continue;
+                    }
+
+                    TryAppendBackstoryField(
+                        defPathBuilder,
+                        identifier,
+                        "title",
+                        backstoryElement.Element("title")?.Value,
+                        source,
+                        conflictPolicy,
+                        output,
+                        upsert,
+                        diagnostics);
+                    TryAppendBackstoryField(
+                        defPathBuilder,
+                        identifier,
+                        "titleFemale",
+                        backstoryElement.Element("titleFemale")?.Value,
+                        source,
+                        conflictPolicy,
+                        output,
+                        upsert,
+                        diagnostics);
+                    TryAppendBackstoryField(
+                        defPathBuilder,
+                        identifier,
+                        "titleShort",
+                        backstoryElement.Element("titleShort")?.Value,
+                        source,
+                        conflictPolicy,
+                        output,
+                        upsert,
+                        diagnostics);
+                    TryAppendBackstoryField(
+                        defPathBuilder,
+                        identifier,
+                        "titleShortFemale",
+                        backstoryElement.Element("titleShortFemale")?.Value,
+                        source,
+                        conflictPolicy,
+                        output,
+                        upsert,
+                        diagnostics);
+                    TryAppendBackstoryField(
+                        defPathBuilder,
+                        identifier,
+                        "description",
+                        backstoryElement.Element("desc")?.Value,
+                        source,
+                        conflictPolicy,
+                        output,
+                        upsert,
+                        diagnostics);
+                }
+            }
+            catch (XmlException ex)
+            {
+                Logger.Warning($"Backstories XML 格式错误 {source.FullPath}: {ex.Message}");
+                diagnostics.ErrorCount++;
+            }
+            catch (Exception ex)
+            {
+                Logger.Error($"解析 Backstories 文件出错: {source.FullPath}", ex);
+                diagnostics.ErrorCount++;
+            }
+        }
+    }
+
+    private static void TryAppendBackstoryField(
+        DefPathBuilder defPathBuilder,
+        string identifier,
+        string fieldName,
+        string? rawValue,
+        XmlSourceFile source,
+        ExtractionConflictPolicy conflictPolicy,
+        List<TranslationItem> output,
+        Dictionary<string, int> upsert,
+        ExtractionDiagnostics diagnostics)
+    {
+        var value = (rawValue ?? string.Empty).Replace("\\n", "\n").Trim();
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return;
+        }
+
+        if (value.Equals("TODO", StringComparison.OrdinalIgnoreCase))
+        {
+            return;
+        }
+
+        var normalizedKey = defPathBuilder.NormalizeKey($"{identifier}.{fieldName}");
+        if (string.IsNullOrWhiteSpace(normalizedKey))
+        {
+            return;
+        }
+
+        var item = new TranslationItem
+        {
+            Key = normalizedKey,
+            DefType = "BackstoryDef",
+            OriginalText = value,
+            TranslatedText = string.Empty,
+            Status = "未翻译",
+            FilePath = source.FullPath,
+            Version = source.Version,
+            ExtractionReasonCode = ExtractionReasonCodes.BackstoryLegacy,
+            ExtractionSourceContext = $"Path={source.RelativePath};Backstory={identifier};Field={fieldName};Source=Backstories"
+        };
+
+        var dedupeKey = $"backstories|{item.Key}";
+        Upsert(output, upsert, dedupeKey, item, conflictPolicy, diagnostics);
     }
 
     private static void TryExtractLegacyRepEntry(

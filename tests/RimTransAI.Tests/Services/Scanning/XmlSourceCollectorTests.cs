@@ -19,6 +19,7 @@ public class XmlSourceCollectorTests
             Directory.CreateDirectory(Path.Combine(langDir, "Keyed"));
             Directory.CreateDirectory(Path.Combine(langDir, "DefLinked", "ThingDef"));
             Directory.CreateDirectory(Path.Combine(langDir, "DefInjected", "ThingDef"));
+            Directory.CreateDirectory(Path.Combine(langDir, "Backstories"));
             Directory.CreateDirectory(Path.Combine(langDir, "Strings", "UI"));
             Directory.CreateDirectory(Path.Combine(langDir, "WordInfo", "Gender"));
 
@@ -27,6 +28,7 @@ public class XmlSourceCollectorTests
             File.WriteAllText(Path.Combine(langDir, "Keyed", "Keyed.xml"), "<LanguageData><B>2</B></LanguageData>");
             File.WriteAllText(Path.Combine(langDir, "DefLinked", "ThingDef", "Old.xml"), "<LanguageData><A>B</A></LanguageData>");
             File.WriteAllText(Path.Combine(langDir, "DefInjected", "ThingDef", "New.xml"), "<LanguageData><A>B</A></LanguageData>");
+            File.WriteAllText(Path.Combine(langDir, "Backstories", "Backstories.xml"), "<BackstoryTranslations />");
             File.WriteAllText(Path.Combine(langDir, "Strings", "UI", "menu.txt"), "line1");
             File.WriteAllText(Path.Combine(langDir, "WordInfo", "Gender", "Male.txt"), "king");
 
@@ -43,6 +45,7 @@ public class XmlSourceCollectorTests
             sources.KeyedFiles.Should().NotContain(x => x.FullPath.EndsWith("Keyed.xml"));
             sources.DefInjectedFiles.Should().ContainSingle(x => x.FullPath.EndsWith("Old.xml"));
             sources.DefInjectedFiles.Should().NotContain(x => x.FullPath.EndsWith("New.xml"));
+            sources.BackstoryFiles.Should().ContainSingle(x => x.FullPath.EndsWith(Path.Combine("Backstories", "Backstories.xml")));
             sources.StringFiles.Should().ContainSingle();
             sources.WordInfoFiles.Should().ContainSingle();
         }
@@ -53,7 +56,7 @@ public class XmlSourceCollectorTests
     }
 
     [Fact]
-    public void Collect_DeduplicatesDefsByRelativePathAcrossLoadFolders()
+    public void Collect_KeepsDefsFromDifferentVersionsWhenRelativePathMatches()
     {
         var root = CreateTempModRoot();
         try
@@ -77,8 +80,9 @@ public class XmlSourceCollectorTests
                 [],
                 new FileRegistry());
 
-            sources.DefFiles.Should().ContainSingle();
-            sources.DefFiles[0].RelativePath.Should().Be("Defs/Sub/A.xml");
+            sources.DefFiles.Should().HaveCount(2);
+            sources.DefFiles.Should().Contain(x => x.Version == "1.5" && x.RelativePath == "Defs/Sub/A.xml");
+            sources.DefFiles.Should().Contain(x => x.Version == "" && x.RelativePath == "Defs/Sub/A.xml");
         }
         finally
         {

@@ -50,29 +50,18 @@ public sealed class GameLoadOrderPlanner
             return false;
         }
 
-        if (foldersByVersion.TryGetValue(NormalizeVersionKey(context.CurrentGameVersion), out var exactFolders) &&
-            exactFolders.Count > 0)
+        var entries = BuildCoverageEntriesFromLoadFolders(
+            context.ModRootPath,
+            foldersByVersion,
+            context.ActivePackageIds);
+
+        if (entries.Count == 0 && foldersByVersion.TryGetValue("default", out var defaultFolders))
         {
-            plan = BuildEntriesFromRules(context.ModRootPath, exactFolders, context.ActivePackageIds);
-            return true;
+            entries = BuildEntriesFromRules(context.ModRootPath, defaultFolders, context.ActivePackageIds);
         }
 
-        var fallbackVersion = SelectClosestCompatibleVersion(
-            foldersByVersion.Keys,
-            context.CurrentGameVersion);
-        if (!string.IsNullOrEmpty(fallbackVersion))
-        {
-            plan = BuildEntriesFromRules(context.ModRootPath, foldersByVersion[fallbackVersion], context.ActivePackageIds);
-            return true;
-        }
-
-        if (foldersByVersion.TryGetValue("default", out var defaultFolders))
-        {
-            plan = BuildEntriesFromRules(context.ModRootPath, defaultFolders, context.ActivePackageIds);
-            return true;
-        }
-
-        return false;
+        plan = entries;
+        return plan.Count > 0;
     }
 
     private static Dictionary<string, List<LoadFolderRule>> ParseLoadFoldersByVersion(string loadFoldersPath)
@@ -196,75 +185,25 @@ public sealed class GameLoadOrderPlanner
                 order++));
         }
 
-        var currentVersionNoBuild = NormalizeVersionKey(context.CurrentGameVersion);
-        var hasExactVersion = !string.IsNullOrEmpty(currentVersionNoBuild) &&
-                              Directory.Exists(Path.Combine(context.ModRootPath, currentVersionNoBuild));
-        if (hasExactVersion)
+        var versionDirs = Directory
+            .EnumerateDirectories(context.ModRootPath, "*", SearchOption.TopDirectoryOnly)
+            .Select(Path.GetFileName)
+            .Where(name => !string.IsNullOrWhiteSpace(name) && VersionDirRegex.IsMatch(name))
+            .Select(name => (Raw: name!, Parsed: ParseVersionSafe(name!)))
+            .Where(x => x.Parsed != null)
+            .OrderByDescending(x => x.Parsed)
+            .Select(x => x.Raw)
+            .ToList();
+
+        foreach (var versionDir in versionDirs)
         {
-            TryAdd(currentVersionNoBuild);
-        }
-        else
-        {
-            var parsedVersionDirs = Directory
-                .EnumerateDirectories(context.ModRootPath, "*", SearchOption.TopDirectoryOnly)
-                .Select(Path.GetFileName)
-                .Where(name => !string.IsNullOrWhiteSpace(name) && VersionDirRegex.IsMatch(name))
-                .Select(name => (Raw: name!, Parsed: ParseVersionSafe(name!)))
-                .Where(x => x.Parsed != null)
-                .OrderBy(x => x.Parsed)
-                .ToList();
-
-            var currentVersion = ParseVersionSafe(currentVersionNoBuild);
-            if (currentVersion == null && parsedVersionDirs.Count > 0)
-            {
-                currentVersion = parsedVersionDirs[^1].Parsed;
-            }
-
-            if (currentVersion != null)
-            {
-                Version selected = new(0, 0);
-                foreach (var item in parsedVersionDirs)
-                {
-                    var version = item.Parsed!;
-                    if ((version > selected || selected > currentVersion) &&
-                        (version <= currentVersion || selected.Major == 0))
-                    {
-                        selected = version;
-                    }
-                }
-
-                if (selected.Major > 0)
-                {
-                    TryAdd(selected.ToString());
-                }
-            }
+            TryAdd(versionDir);
         }
 
         TryAdd("Common");
         TryAdd(string.Empty);
 
         return result;
-    }
-
-    private static string SelectClosestCompatibleVersion(IEnumerable<string> definedVersions, string currentGameVersion)
-    {
-        var current = ParseVersionSafe(currentGameVersion);
-        if (current == null)
-        {
-            return string.Empty;
-        }
-
-        var candidates = definedVersions
-            .Where(x => !string.Equals(x, "default", StringComparison.OrdinalIgnoreCase) && x.Contains('.'))
-            .Select(x => (Raw: x, Parsed: ParseVersionSafe(x)))
-            .Where(x =>
-            {
-                return x.Parsed != null && x.Parsed <= current;
-            })
-            .OrderByDescending(x => x.Parsed)
-            .ToList();
-
-        return candidates.Count > 0 ? candidates[0].Raw : string.Empty;
     }
 
     private static bool ShouldLoad(LoadFolderRule rule, HashSet<string> activePackageIds)
@@ -381,5 +320,71 @@ public sealed class GameLoadOrderPlanner
 
         var firstSegment = NormalizeRelativePath(relativePath).Split('/')[0];
         return VersionDirRegex.IsMatch(firstSegment) ? firstSegment : string.Empty;
+    }
+
+    private static List<LoadFolderPlanEntry> BuildCoverageEntriesFromLoadFolders(
+        string modRootPath,
+        Dictionary<string, List<LoadFolderRule>> foldersByVersion,
+        IReadOnlyCollection<string> activePackageIds)
+    {
+        var versionKeys = foldersByVersion.Keys
+            .Where(x => !string.Equals(x, "default", StringComparison.OrdinalIgnoreCase))
+            .Select(x => (Key: x, Parsed: ParseVersionSafe(x)))
+            .OrderByDescending(x => x.Parsed)
+            .ThenByDescending(x => x.Key, StringComparer.OrdinalIgnoreCase)
+            .Select(x => x.Key)
+            .ToList();
+
+        var result = new List<LoadFolderPlanEntry>();
+        var seenFullPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
+        var order = 0;
+
+        foreach (var versionKey in versionKeys)
+        {
+            if (!foldersByVersion.TryGetValue(versionKey, out var rules) || rules.Count == 0)
+            {
+                continue;
+            }
+
+            var entries = BuildEntriesFromRules(modRootPath, rules, activePackageIds);
+            foreach (var entry in entries)
+            {
+                if (!seenFullPaths.Add(entry.FullPath))
+                {
+                    continue;
+                }
+
+                var normalizedRelativePath = NormalizeRelativePath(entry.RelativePath);
+                var version = !string.IsNullOrWhiteSpace(entry.Version)
+                    ? entry.Version
+                    : InferVersionFromRelativePath(normalizedRelativePath);
+
+                result.Add(new LoadFolderPlanEntry(
+                    entry.FullPath,
+                    entry.RelativePath,
+                    version,
+                    order++));
+            }
+        }
+
+        if (foldersByVersion.TryGetValue("default", out var defaultRules) && defaultRules.Count > 0)
+        {
+            var defaultEntries = BuildEntriesFromRules(modRootPath, defaultRules, activePackageIds);
+            foreach (var entry in defaultEntries)
+            {
+                if (!seenFullPaths.Add(entry.FullPath))
+                {
+                    continue;
+                }
+
+                result.Add(new LoadFolderPlanEntry(
+                    entry.FullPath,
+                    entry.RelativePath,
+                    entry.Version,
+                    order++));
+            }
+        }
+
+        return result;
     }
 }

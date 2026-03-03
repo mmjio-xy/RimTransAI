@@ -37,6 +37,8 @@ public sealed class XmlSourceCollection
 
     public List<XmlSourceFile> DefInjectedFiles { get; } = [];
 
+    public List<XmlSourceFile> BackstoryFiles { get; } = [];
+
     public List<XmlSourceFile> StringFiles { get; } = [];
 
     public List<XmlSourceFile> WordInfoFiles { get; } = [];
@@ -53,6 +55,8 @@ public sealed class ScanDiagnostics
     public int KeyedFileCount { get; set; }
 
     public int DefInjectedFileCount { get; set; }
+
+    public int BackstoryFileCount { get; set; }
 
     public int StringFileCount { get; set; }
 

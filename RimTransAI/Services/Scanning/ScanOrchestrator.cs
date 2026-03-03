@@ -52,6 +52,7 @@ public sealed class ScanOrchestrator
                 DefFileCount = sources.DefFiles.Count,
                 KeyedFileCount = sources.KeyedFiles.Count,
                 DefInjectedFileCount = sources.DefInjectedFiles.Count,
+                BackstoryFileCount = sources.BackstoryFiles.Count,
                 StringFileCount = sources.StringFiles.Count,
                 WordInfoFileCount = sources.WordInfoFiles.Count,
                 SourceFileAttemptCount = _fileRegistry.AttemptCount,

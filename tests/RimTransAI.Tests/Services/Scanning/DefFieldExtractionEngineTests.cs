@@ -353,6 +353,96 @@ public class DefFieldExtractionEngineTests
         }
     }
 
+    [Fact]
+    public void Extract_BackstoriesLegacyFile_ProducesBackstoryDefItems()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            var backstoriesFile = Path.Combine(root, "Backstories.xml");
+            File.WriteAllText(backstoriesFile, """
+                <BackstoryTranslations>
+                  <Drone42>
+                    <title>无人机</title>
+                    <titleShort>无人机</titleShort>
+                    <desc>（无）</desc>
+                  </Drone42>
+                </BackstoryTranslations>
+                """);
+
+            var sources = new XmlSourceCollection();
+            sources.BackstoryFiles.Add(new XmlSourceFile(
+                backstoriesFile,
+                "Languages/English/Backstories/Backstories.xml",
+                "1.5",
+                "Backstories",
+                0));
+
+            var engine = new DefFieldExtractionEngine();
+            var result = engine.Extract(
+                new ScanContext(root, "English", "English", [], "1.5"),
+                sources,
+                new Dictionary<string, HashSet<string>>());
+
+            result.Should().ContainSingle(x =>
+                x.Key == "Drone42.title" &&
+                x.DefType == "BackstoryDef" &&
+                x.OriginalText == "无人机" &&
+                x.ExtractionReasonCode == ExtractionReasonCodes.BackstoryLegacy);
+            result.Should().ContainSingle(x =>
+                x.Key == "Drone42.titleShort" &&
+                x.DefType == "BackstoryDef");
+            result.Should().ContainSingle(x =>
+                x.Key == "Drone42.description" &&
+                x.DefType == "BackstoryDef" &&
+                x.OriginalText == "（无）");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Extract_DefsWithHandleLikeList_UsesHandlePathInKey()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            var defsFile = Path.Combine(root, "ThingDefs.xml");
+            File.WriteAllText(defsFile, """
+                <Defs>
+                  <ThingDef>
+                    <defName>PRF_SunWallLight</defName>
+                    <comps>
+                      <li>
+                        <compClass>RimWorld.CompSchedule</compClass>
+                        <offMessage>Off for plant resting period</offMessage>
+                      </li>
+                    </comps>
+                  </ThingDef>
+                </Defs>
+                """);
+
+            var sources = new XmlSourceCollection();
+            sources.DefFiles.Add(new XmlSourceFile(defsFile, "Defs/ThingDefs.xml", "1.5", "Defs", 0));
+
+            var engine = new DefFieldExtractionEngine();
+            var result = engine.Extract(
+                new ScanContext(root, "English", "English", [], "1.5"),
+                sources,
+                new Dictionary<string, HashSet<string>>());
+
+            result.Should().ContainSingle(x =>
+                x.Key == "PRF_SunWallLight.comps.CompSchedule.offMessage" &&
+                x.OriginalText == "Off for plant resting period");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     private static string CreateTempRoot()
     {
         var root = Path.Combine(Path.GetTempPath(), $"rta_extract_{Guid.NewGuid():N}");

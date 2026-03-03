@@ -173,6 +173,51 @@ public class DefsSourceParserTests
         }
     }
 
+    [Fact]
+    public void Parse_ListUnderPartsAndComps_PrefersHandleSegments()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            var file = Path.Combine(root, "ThingDefs.xml");
+            File.WriteAllText(file, """
+                <Defs>
+                  <ScenarioDef>
+                    <defName>ScenarioA</defName>
+                    <scenario>
+                      <parts>
+                        <li Class="RimWorld.ScenPart_GameStartDialog">
+                          <text>Start text</text>
+                        </li>
+                      </parts>
+                    </scenario>
+                  </ScenarioDef>
+                  <ThingDef>
+                    <defName>ThingA</defName>
+                    <comps>
+                      <li>
+                        <compClass>RimWorld.CompSchedule</compClass>
+                        <offMessage>Off for plant resting period</offMessage>
+                      </li>
+                    </comps>
+                  </ThingDef>
+                </Defs>
+                """);
+
+            var parser = new DefsSourceParser();
+            var result = parser.Parse(file);
+
+            result.IsValidDefsRoot.Should().BeTrue();
+            var nodes = result.Definitions.SelectMany(x => Flatten(x.Nodes)).ToList();
+            nodes.Should().Contain(x => x.Path == "scenario.parts.GameStartDialog.text");
+            nodes.Should().Contain(x => x.Path == "comps.CompSchedule.offMessage");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     private static List<ParsedDefNode> Flatten(IReadOnlyList<ParsedDefNode> nodes)
     {
         var result = new List<ParsedDefNode>();

@@ -44,7 +44,8 @@ public sealed class XmlSourceCollector
                          .OrderBy(x => x, StringComparer.OrdinalIgnoreCase))
             {
                 var relativePath = NormalizeRelativePath(Path.GetRelativePath(loadFolder.FullPath, file));
-                if (!fileRegistry.TryRegister("defs", relativePath))
+                var scope = BuildVersionAwareScope("defs", loadFolder.Version);
+                if (!fileRegistry.TryRegister(scope, relativePath))
                 {
                     continue;
                 }
@@ -69,6 +70,7 @@ public sealed class XmlSourceCollector
         {
             CollectKeyed(languageDir, fileRegistry, sources, ref order);
             CollectDefInjected(languageDir, fileRegistry, sources, ref order);
+            CollectBackstories(languageDir, fileRegistry, sources, ref order);
             CollectStrings(languageDir, fileRegistry, sources, ref order);
             CollectWordInfo(languageDir, fileRegistry, sources, ref order);
         }
@@ -101,7 +103,8 @@ public sealed class XmlSourceCollector
                      .OrderBy(x => x, StringComparer.OrdinalIgnoreCase))
         {
             var relativePath = NormalizeRelativePath(Path.GetRelativePath(languageDir.LoadFolderPath, file));
-            if (!fileRegistry.TryRegister("lang", relativePath))
+            var scope = BuildVersionAwareScope("lang", languageDir.Version);
+            if (!fileRegistry.TryRegister(scope, relativePath))
             {
                 continue;
             }
@@ -146,7 +149,8 @@ public sealed class XmlSourceCollector
                          .OrderBy(x => x, StringComparer.OrdinalIgnoreCase))
             {
                 var relativePath = NormalizeRelativePath(Path.GetRelativePath(languageDir.LoadFolderPath, file));
-                if (!fileRegistry.TryRegister("lang", relativePath))
+                var scope = BuildVersionAwareScope("lang", languageDir.Version);
+                if (!fileRegistry.TryRegister(scope, relativePath))
                 {
                     continue;
                 }
@@ -180,7 +184,8 @@ public sealed class XmlSourceCollector
                          .OrderBy(x => x, StringComparer.OrdinalIgnoreCase))
             {
                 var relativePath = NormalizeRelativePath(Path.GetRelativePath(languageDir.LoadFolderPath, file));
-                if (!fileRegistry.TryRegister("lang", relativePath))
+                var scope = BuildVersionAwareScope("lang", languageDir.Version);
+                if (!fileRegistry.TryRegister(scope, relativePath))
                 {
                     continue;
                 }
@@ -193,6 +198,33 @@ public sealed class XmlSourceCollector
                     order++));
             }
         }
+    }
+
+    private static void CollectBackstories(
+        LanguageDirectoryEntry languageDir,
+        FileRegistry fileRegistry,
+        XmlSourceCollection sources,
+        ref int order)
+    {
+        var backstoriesFile = Path.Combine(languageDir.FullPath, "Backstories", "Backstories.xml");
+        if (!File.Exists(backstoriesFile))
+        {
+            return;
+        }
+
+        var relativePath = NormalizeRelativePath(Path.GetRelativePath(languageDir.LoadFolderPath, backstoriesFile));
+        var scope = BuildVersionAwareScope("lang", languageDir.Version);
+        if (!fileRegistry.TryRegister(scope, relativePath))
+        {
+            return;
+        }
+
+        sources.BackstoryFiles.Add(new XmlSourceFile(
+            Path.GetFullPath(backstoriesFile),
+            relativePath,
+            languageDir.Version,
+            "Backstories",
+            order++));
     }
 
     private static void CollectWordInfo(
@@ -211,7 +243,8 @@ public sealed class XmlSourceCollector
                      .OrderBy(x => x, StringComparer.OrdinalIgnoreCase))
         {
             var relativePath = NormalizeRelativePath(Path.GetRelativePath(languageDir.LoadFolderPath, file));
-            if (!fileRegistry.TryRegister("lang", relativePath))
+            var scope = BuildVersionAwareScope("lang", languageDir.Version);
+            if (!fileRegistry.TryRegister(scope, relativePath))
             {
                 continue;
             }
@@ -232,5 +265,14 @@ public sealed class XmlSourceCollector
             .Trim()
             .TrimStart('/')
             .TrimEnd('/');
+    }
+
+    private static string BuildVersionAwareScope(string baseScope, string version)
+    {
+        var normalizedBase = (baseScope ?? string.Empty).Trim();
+        var normalizedVersion = (version ?? string.Empty).Trim();
+        return string.IsNullOrWhiteSpace(normalizedVersion)
+            ? normalizedBase
+            : $"{normalizedBase}@{normalizedVersion}";
     }
 }

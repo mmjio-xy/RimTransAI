@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 using System.Linq;
+using System.Text;
+using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.Linq;
 
@@ -43,6 +45,10 @@ public sealed class DefsSourceParseResult
 
 public sealed class DefsSourceParser
 {
+    private static readonly Regex StringFormatSymbolsRegex = new("{.*?}", RegexOptions.Compiled);
+
+    private static readonly string HandleAllowedCharacters = "qwertyuiopasdfghjklzxcvbnmQWERTYUIOPASDFGHJKLZXCVBNM1234567890-_";
+
     private readonly DefsSourceParserOptions _options;
     private readonly DefPathBuilder _pathBuilder;
 
@@ -134,22 +140,16 @@ public sealed class DefsSourceParser
         ref bool hitTraversalLimit)
     {
         var nodes = new List<ParsedDefNode>();
-        var liIndex = 0;
-
-        foreach (var child in parent.Elements())
+        foreach (var childWithSegment in BuildChildSegments(parent))
         {
             if (hitTraversalLimit)
             {
                 break;
             }
 
-            var segment = child.Name.LocalName.Equals("li", StringComparison.OrdinalIgnoreCase)
-                ? liIndex++.ToString(CultureInfo.InvariantCulture)
-                : child.Name.LocalName;
-
             nodes.Add(BuildNode(
-                child,
-                [segment],
+                childWithSegment.Element,
+                [childWithSegment.Segment],
                 depth + 1,
                 ref traversalNodeCount,
                 ref hitTraversalLimit));
@@ -193,25 +193,19 @@ public sealed class DefsSourceParser
         }
 
         var children = new List<ParsedDefNode>();
-        var liIndex = 0;
-
-        foreach (var child in element.Elements())
+        foreach (var childWithSegment in BuildChildSegments(element))
         {
             if (hitTraversalLimit)
             {
                 break;
             }
 
-            var segment = child.Name.LocalName.Equals("li", StringComparison.OrdinalIgnoreCase)
-                ? liIndex++.ToString(CultureInfo.InvariantCulture)
-                : child.Name.LocalName;
-
             var childPath = new List<string>(pathSegments.Count + 1);
             childPath.AddRange(pathSegments);
-            childPath.Add(segment);
+            childPath.Add(childWithSegment.Segment);
 
             children.Add(BuildNode(
-                child,
+                childWithSegment.Element,
                 childPath,
                 depth + 1,
                 ref traversalNodeCount,
@@ -261,5 +255,261 @@ public sealed class DefsSourceParser
     {
         var className = element.Attribute("Class")?.Value?.Trim();
         return className ?? string.Empty;
+    }
+
+    private static IReadOnlyList<(XElement Element, string Segment)> BuildChildSegments(XElement parent)
+    {
+        var elements = parent.Elements().ToList();
+        if (elements.Count == 0)
+        {
+            return [];
+        }
+
+        var parentTagName = parent.Name.LocalName;
+        if (!ShouldUseHandleSegments(parentTagName))
+        {
+            var basic = new List<(XElement Element, string Segment)>(elements.Count);
+            var liIndex = 0;
+            foreach (var child in elements)
+            {
+                var segment = child.Name.LocalName.Equals("li", StringComparison.OrdinalIgnoreCase)
+                    ? liIndex++.ToString(CultureInfo.InvariantCulture)
+                    : child.Name.LocalName;
+                basic.Add((child, segment));
+            }
+
+            return basic;
+        }
+
+        var listItemOrdinalByElement = new Dictionary<XElement, int>();
+        var listItemHandleByElement = new Dictionary<XElement, string>();
+        var handleCounts = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var listItemIndex = 0;
+
+        foreach (var child in elements)
+        {
+            if (!child.Name.LocalName.Equals("li", StringComparison.OrdinalIgnoreCase))
+            {
+                continue;
+            }
+
+            listItemOrdinalByElement[child] = listItemIndex++;
+            var handle = TryResolveListHandle(child, parentTagName);
+            if (string.IsNullOrWhiteSpace(handle))
+            {
+                continue;
+            }
+
+            listItemHandleByElement[child] = handle;
+            handleCounts[handle] = handleCounts.GetValueOrDefault(handle) + 1;
+        }
+
+        var handleOccurrence = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+        var result = new List<(XElement Element, string Segment)>(elements.Count);
+
+        foreach (var child in elements)
+        {
+            if (!child.Name.LocalName.Equals("li", StringComparison.OrdinalIgnoreCase))
+            {
+                result.Add((child, child.Name.LocalName));
+                continue;
+            }
+
+            if (!listItemHandleByElement.TryGetValue(child, out var handle))
+            {
+                var ordinal = listItemOrdinalByElement[child];
+                result.Add((child, ordinal.ToString(CultureInfo.InvariantCulture)));
+                continue;
+            }
+
+            if (handleCounts.TryGetValue(handle, out var count) && count > 1)
+            {
+                var occurrence = handleOccurrence.GetValueOrDefault(handle);
+                handleOccurrence[handle] = occurrence + 1;
+                result.Add((child, $"{handle}-{occurrence.ToString(CultureInfo.InvariantCulture)}"));
+                continue;
+            }
+
+            result.Add((child, handle));
+        }
+
+        return result;
+    }
+
+    private static bool ShouldUseHandleSegments(string parentTagName)
+    {
+        return parentTagName.Equals("parts", StringComparison.OrdinalIgnoreCase) ||
+               parentTagName.Equals("comps", StringComparison.OrdinalIgnoreCase);
+    }
+
+    private static string? TryResolveListHandle(XElement listItem, string parentTagName)
+    {
+        var tKey = GetAttributeValue(listItem, "TKey");
+        if (!string.IsNullOrWhiteSpace(tKey))
+        {
+            var normalized = NormalizeHandle(tKey);
+            if (!string.IsNullOrWhiteSpace(normalized))
+            {
+                return normalized;
+            }
+        }
+
+        if (parentTagName.Equals("comps", StringComparison.OrdinalIgnoreCase))
+        {
+            var compClass = GetElementValue(listItem, "compClass");
+            if (!string.IsNullOrWhiteSpace(compClass))
+            {
+                var normalized = NormalizeHandle(ExtractTypeShortName(compClass));
+                if (!string.IsNullOrWhiteSpace(normalized))
+                {
+                    return normalized;
+                }
+            }
+        }
+
+        var key = GetElementValue(listItem, "key");
+        if (!string.IsNullOrWhiteSpace(key))
+        {
+            var normalized = NormalizeHandle(key);
+            if (!string.IsNullOrWhiteSpace(normalized))
+            {
+                return normalized;
+            }
+        }
+
+        if (parentTagName.Equals("parts", StringComparison.OrdinalIgnoreCase))
+        {
+            var partDef = GetElementValue(listItem, "def") ?? GetElementValue(listItem, "defName");
+            if (!string.IsNullOrWhiteSpace(partDef))
+            {
+                var normalized = NormalizeHandle(partDef);
+                if (!string.IsNullOrWhiteSpace(normalized))
+                {
+                    return normalized;
+                }
+            }
+        }
+
+        var className = GetAttributeValue(listItem, "Class") ?? GetElementValue(listItem, "class");
+        if (string.IsNullOrWhiteSpace(className))
+        {
+            return null;
+        }
+
+        var candidate = BuildHandleCandidateFromClassName(className, parentTagName);
+        return NormalizeHandle(candidate);
+    }
+
+    private static string? GetAttributeValue(XElement element, string attributeName)
+    {
+        var attr = element.Attributes()
+            .FirstOrDefault(x => x.Name.LocalName.Equals(attributeName, StringComparison.OrdinalIgnoreCase));
+        return attr?.Value?.Trim();
+    }
+
+    private static string? GetElementValue(XElement element, string childName)
+    {
+        var child = element.Elements()
+            .FirstOrDefault(x => x.Name.LocalName.Equals(childName, StringComparison.OrdinalIgnoreCase));
+        return child?.Value?.Trim();
+    }
+
+    private static string BuildHandleCandidateFromClassName(string className, string parentTagName)
+    {
+        var shortName = ExtractTypeShortName(className);
+        if (string.IsNullOrWhiteSpace(shortName))
+        {
+            return className;
+        }
+
+        if (parentTagName.Equals("parts", StringComparison.OrdinalIgnoreCase) &&
+            shortName.StartsWith("ScenPart_", StringComparison.OrdinalIgnoreCase))
+        {
+            return shortName["ScenPart_".Length..];
+        }
+
+        if (parentTagName.Equals("comps", StringComparison.OrdinalIgnoreCase) &&
+            shortName.StartsWith("CompProperties_", StringComparison.OrdinalIgnoreCase))
+        {
+            return $"Comp{shortName["CompProperties_".Length..]}";
+        }
+
+        return shortName;
+    }
+
+    private static string ExtractTypeShortName(string value)
+    {
+        if (string.IsNullOrWhiteSpace(value))
+        {
+            return string.Empty;
+        }
+
+        var text = value.Trim();
+        var assemblySeparator = text.IndexOf(',');
+        if (assemblySeparator >= 0)
+        {
+            text = text[..assemblySeparator];
+        }
+
+        var plusIndex = text.LastIndexOf('+');
+        if (plusIndex >= 0 && plusIndex < text.Length - 1)
+        {
+            text = text[(plusIndex + 1)..];
+        }
+
+        var dotIndex = text.LastIndexOf('.');
+        if (dotIndex >= 0 && dotIndex < text.Length - 1)
+        {
+            text = text[(dotIndex + 1)..];
+        }
+
+        return text.Trim();
+    }
+
+    private static string NormalizeHandle(string raw)
+    {
+        if (string.IsNullOrWhiteSpace(raw))
+        {
+            return string.Empty;
+        }
+
+        var handle = raw.Trim()
+            .Replace(' ', '_')
+            .Replace('\n', '_')
+            .Replace("\r", string.Empty)
+            .Replace('\t', '_')
+            .Replace(".", string.Empty, StringComparison.Ordinal)
+            .Replace("-", string.Empty, StringComparison.Ordinal);
+
+        if (handle.IndexOf('{') >= 0)
+        {
+            handle = StringFormatSymbolsRegex.Replace(handle, string.Empty);
+        }
+
+        var filtered = new StringBuilder(handle.Length);
+        foreach (var ch in handle)
+        {
+            if (HandleAllowedCharacters.IndexOf(ch) >= 0)
+            {
+                filtered.Append(ch);
+            }
+        }
+
+        var compact = new StringBuilder(filtered.Length);
+        for (var i = 0; i < filtered.Length; i++)
+        {
+            if (i == 0 || filtered[i] != '_' || filtered[i - 1] != '_')
+            {
+                compact.Append(filtered[i]);
+            }
+        }
+
+        var normalized = compact.ToString().Trim('_');
+        if (!string.IsNullOrWhiteSpace(normalized) && normalized.All(char.IsDigit))
+        {
+            normalized = $"_{normalized}";
+        }
+
+        return normalized;
     }
 }
