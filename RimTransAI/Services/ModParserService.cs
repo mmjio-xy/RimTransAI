@@ -9,6 +9,7 @@ using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.Linq;
 using RimTransAI.Models;
+using RimTransAI.Services.Scanning;
 
 namespace RimTransAI.Services;
 
@@ -40,6 +41,7 @@ public class ModParserService
 
     private readonly ConfigService _configService;
     private readonly ReflectionAnalyzer _reflectionAnalyzer;
+    private readonly ScanOrchestrator _scanOrchestrator;
     private Dictionary<string, HashSet<string>>? _reflectionMap;
 
     // 构造函数：必须提供反射分析器和配置服务
@@ -47,6 +49,7 @@ public class ModParserService
     {
         _reflectionAnalyzer = reflectionAnalyzer ?? throw new ArgumentNullException(nameof(reflectionAnalyzer));
         _configService = configService ?? throw new ArgumentNullException(nameof(configService));
+        _scanOrchestrator = new ScanOrchestrator();
     }
 
     public List<TranslationItem> ScanModFolder(string modPath)
@@ -63,6 +66,9 @@ public class ModParserService
         Logger.Info("开始扫描 Mod 文件夹");
         Logger.Info($"路径: {modPath}");
         Logger.Info("========================================");
+
+        // 阶段 0：重构入口已落位。阶段 5 会将主流程切换到 _scanOrchestrator.Scan(...)。
+        _ = _scanOrchestrator;
 
         // 第一步：加载类型定义（Core + Mod DLL）
         Logger.Info("步骤 1/4: 加载类型定义...");
