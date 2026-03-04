@@ -274,7 +274,6 @@
                                   ItemsSource="{Binding AvailableVersions}"
                                   SelectedItem="{Binding SelectedVersion}"
                                   PlaceholderText="全部" />
-                        <ProgressBar Width="220" Minimum="0" Maximum="100" Value="{Binding ProgressValue}" IsVisible="{Binding IsTranslating}"/>
                     </StackPanel>
 
                     <DataGrid Grid.Row="2"

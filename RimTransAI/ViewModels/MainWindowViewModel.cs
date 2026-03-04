@@ -38,7 +38,6 @@ public partial class MainWindowViewModel : ViewModelBase
     [ObservableProperty] private bool _isTranslating;
     [ObservableProperty] private string _logOutput = "就绪。请先在设置页配置 Mod 来源目录。";
     [ObservableProperty] private string _latestLogLine = "就绪。请先在设置页配置 Mod 来源目录。";
-    [ObservableProperty] private double _progressValue;
     [ObservableProperty] private string _selectedVersion = "全部";
     [ObservableProperty] private ModInfoViewModel? _modInfoViewModel;
     [ObservableProperty] private WorkspaceModItem? _selectedMod;
@@ -491,7 +490,6 @@ public partial class MainWindowViewModel : ViewModelBase
         }
 
         IsTranslating = true;
-        ProgressValue = 0;
 
         _translationCts?.Dispose();
         _translationCts = new CancellationTokenSource();
@@ -591,7 +589,6 @@ public partial class MainWindowViewModel : ViewModelBase
                     }
 
                     processedGroups += batch.Count;
-                    ProgressValue = (double)processedGroups / totalGroups * 100;
                     LogOutput = $"翻译进度: {i + 1}/{totalBatches} 批次 | {processedGroups}/{totalGroups} 文本 (~{batchTokens} tokens)";
                 }
             }
@@ -664,7 +661,6 @@ public partial class MainWindowViewModel : ViewModelBase
 
     private void UpdateMultiThreadProgress(TranslationProgress progress)
     {
-        ProgressValue = (double)progress.ProcessedBatches / progress.TotalBatches * 100;
         LogOutput =
             $"多线程翻译进度: {progress.ProcessedBatches}/{progress.TotalBatches} 批次 | 正在运行 {progress.ActiveThreads} 个线程";
     }
