@@ -224,39 +224,6 @@ public class BackupService
     }
 
     /// <summary>
-    /// 检查是否存在指定版本的备份
-    /// </summary>
-    /// <param name="packageId">Mod 的 PackageId</param>
-    /// <param name="version">版本</param>
-    /// <returns>最新备份文件的完整路径，如果不存在则返回 null</returns>
-    public string? CheckBackupExists(string packageId, string version)
-    {
-        string sanitizedPackageId = packageId.Replace(".", "_");
-        string versionDisplay = string.IsNullOrEmpty(version) ? "Root" : version;
-
-        string backupDir = GetBackupDirectory();
-
-        if (!Directory.Exists(backupDir))
-        {
-            return null;
-        }
-
-        // 查找匹配的备份文件（按文件名匹配）
-        // 转义正则特殊字符
-        string escapedPackageId = Regex.Escape(sanitizedPackageId);
-        string escapedVersion = Regex.Escape(versionDisplay);
-        string pattern = $"^{escapedPackageId}_{escapedVersion}_.*\\.zip$";
-        var regex = new Regex(pattern, RegexOptions.IgnoreCase);
-
-        var backupFiles = Directory.GetFiles(backupDir, "*.zip")
-            .Where(file => regex.IsMatch(Path.GetFileName(file)))
-            .OrderByDescending(file => File.GetCreationTime(file))
-            .ToList();
-
-        return backupFiles.FirstOrDefault();
-    }
-
-    /// <summary>
     /// 获取所有备份文件信息
     /// </summary>
     /// <param name="packageId">Mod 的 PackageId（可选，如果不指定则返回所有备份）</param>
@@ -303,27 +270,6 @@ public class BackupService
 
         // 按创建时间降序排序
         return backups.OrderByDescending(b => b.CreationTime).ToList();
-    }
-
-    /// <summary>
-    /// 恢复翻译文件夹
-    /// </summary>
-    /// <param name="modRootPath">Mod 根目录</param>
-    /// <param name="version">版本</param>
-    /// <param name="targetLang">目标语言</param>
-    /// <returns>是否成功恢复</returns>
-    public bool RestoreTranslationFolder(string modRootPath, string version, string targetLang)
-    {
-        return false;
-    }
-
-    /// <summary>
-    /// 恢复翻译文件夹（带 PackageId）- 旧方法保留兼容
-    /// </summary>
-    public bool RestoreTranslationFolder(string modRootPath, string packageId, string version, string targetLang)
-    {
-        var result = RestoreFromBackup(modRootPath, packageId, version);
-        return result.Success;
     }
 
     /// <summary>
@@ -503,66 +449,6 @@ public class BackupService
         return BitConverter.ToString(hash).Replace("-", "").ToLowerInvariant();
     }
 
-    /// <summary>
-    /// 从 ZIP 注释中解析备份信息
-    /// </summary>
-    /// <param name="zipPath">ZIP 文件路径</param>
-    /// <returns>解析出的备份信息，如果失败则返回 null</returns>
-    private BackupInfo? ParseBackupFromComment(string zipPath)
-    {
-        try
-        {
-            using var archive = ZipFile.OpenRead(zipPath);
-            if (string.IsNullOrEmpty(archive.Comment))
-            {
-                return null;
-            }
-
-            // 解析注释格式：ModName: xxx | PackageId: xxx | Version: xxx | Created: xxx | Hash: xxx
-            var parts = archive.Comment.Split('|').Select(p => p.Trim()).ToList();
-            var info = new BackupInfo
-            {
-                FilePath = zipPath,
-                FileSizeBytes = new FileInfo(zipPath).Length
-            };
-
-            foreach (var part in parts)
-            {
-                if (part.StartsWith("ModName:", StringComparison.OrdinalIgnoreCase))
-                {
-                    info.ModName = part.Substring("ModName:".Length).Trim();
-                }
-                else if (part.StartsWith("PackageId:", StringComparison.OrdinalIgnoreCase))
-                {
-                    info.PackageId = part.Substring("PackageId:".Length).Trim();
-                }
-                else if (part.StartsWith("Version:", StringComparison.OrdinalIgnoreCase))
-                {
-                    info.VersionDisplay = part.Substring("Version:".Length).Trim();
-                    info.Version = info.VersionDisplay == "Root" ? "" : info.VersionDisplay;
-                }
-                else if (part.StartsWith("Created:", StringComparison.OrdinalIgnoreCase))
-                {
-                    if (DateTime.TryParse(part.Substring("Created:".Length).Trim(), out var createdTime))
-                    {
-                        info.CreationTime = createdTime;
-                    }
-                }
-                else if (part.StartsWith("Hash:", StringComparison.OrdinalIgnoreCase))
-                {
-                    info.Hash = part.Substring("Hash:".Length).Trim();
-                }
-            }
-
-            // 如果无法从注释解析，返回 null（将使用文件名作为备用）
-            return info;
-        }
-        catch (Exception ex)
-        {
-            Logger.Warning($"解析 ZIP 注释失败: {zipPath} - {ex.Message}");
-            return null;
-        }
-    }
 }
 
 /// <summary>

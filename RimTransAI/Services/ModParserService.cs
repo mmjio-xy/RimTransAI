@@ -4,7 +4,6 @@ using System.Diagnostics;
 using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
-using System.Xml;
 using System.Xml.Linq;
 using RimTransAI.Models;
 using RimTransAI.Services.Scanning;
@@ -13,9 +12,6 @@ namespace RimTransAI.Services;
 
 public class ModParserService
 {
-    // 用于匹配路径中的版本号（带斜杠）
-    private static readonly Regex VersionRegex = new Regex(@"[\\/](\d+\.\d+)[\\/]", RegexOptions.Compiled);
-
     // 用于匹配目录名中的版本号（不带斜杠）
     private static readonly Regex VersionDirRegex = new Regex(@"^\d+\.\d+$", RegexOptions.Compiled);
 
@@ -106,107 +102,6 @@ public class ModParserService
         Logger.Info($"Keyed 翻译项: {keyedCount} 个");
         Logger.Info($"总计: {items.Count} 个");
         Logger.Info("========================================");
-
-        return items;
-    }
-
-    /// <summary>
-    /// 解析单个XML文件
-    /// 模拟 RimWorld 加载单个 Def 文件的过程
-    /// </summary>
-    public List<TranslationItem> ParseSingleFile(string filePath)
-    {
-        var items = new List<TranslationItem>();
-
-        if (!File.Exists(filePath))
-        {
-            throw new FileNotFoundException("文件不存在", filePath);
-        }
-
-        if (!filePath.EndsWith(".xml", StringComparison.OrdinalIgnoreCase))
-        {
-            throw new ArgumentException("只支持XML文件", nameof(filePath));
-        }
-
-        Logger.Info("========================================");
-        Logger.Info("解析单个 XML 文件");
-        Logger.Info($"文件: {Path.GetFileName(filePath)}");
-        Logger.Info("========================================");
-
-        // 第一步：获取文件所在的Mod目录
-        string? modPath = GetModRootPath(filePath);
-        if (modPath == null)
-        {
-            throw new InvalidOperationException("无法确定Mod根目录");
-        }
-
-        Logger.Info($"Mod 根目录: {modPath}");
-
-        // 第二步：加载类型定义（Core + Mod DLL）
-        Logger.Info("步骤 1/2: 加载类型定义...");
-        _reflectionMap = TryAnalyzeModAssemblies(modPath);
-
-        if (_reflectionMap == null || _reflectionMap.Count == 0)
-        {
-            Logger.Error("无法加载核心类型定义，请检查 Assembly-CSharp.dll 配置");
-            return items;
-        }
-
-        Logger.Info($"类型定义加载完成，找到 {_reflectionMap.Count} 个可翻译类型");
-
-        // 第三步：使用扫描提取引擎解析文件
-        Logger.Info("步骤 2/2: 解析 XML 文件...");
-        var extractionEngine = new DefFieldExtractionEngine();
-
-        try
-        {
-            var doc = XDocument.Load(filePath);
-            if (doc.Root == null)
-            {
-                Logger.Warning("XML 文件没有根元素");
-                return items;
-            }
-
-            string version = GetVersionFromPath(filePath);
-            var sources = new XmlSourceCollection();
-            var sourceFile = new XmlSourceFile(
-                Path.GetFullPath(filePath),
-                Path.GetFileName(filePath),
-                version,
-                doc.Root.Name.LocalName,
-                0);
-
-            if (doc.Root.Name.LocalName.Equals("Defs", StringComparison.OrdinalIgnoreCase))
-            {
-                sources.DefFiles.Add(sourceFile);
-            }
-            else if (doc.Root.Name.LocalName.Equals("LanguageData", StringComparison.OrdinalIgnoreCase))
-            {
-                sources.KeyedFiles.Add(sourceFile);
-            }
-            else
-            {
-                Logger.Warning($"未识别的 XML 根节点，已跳过: {doc.Root.Name.LocalName}");
-                return items;
-            }
-
-            var context = new ScanContext(
-                modPath,
-                "English",
-                "English",
-                GetLikelyActivePackageIds(modPath),
-                ResolveCurrentGameVersion(modPath));
-
-            items.AddRange(extractionEngine.Extract(context, sources, _reflectionMap));
-
-            Logger.Info("========================================");
-            Logger.Info($"解析完成，提取 {items.Count} 个翻译项");
-            Logger.Info("========================================");
-        }
-        catch (XmlException ex)
-        {
-            throw new XmlException($"XML格式错误: {ex.Message}", ex);
-        }
 
         return items;
     }
@@ -318,41 +213,6 @@ public class ModParserService
         }
 
         return result;
-    }
-
-    /// <summary>
-    /// 从文件路径提取版本号
-    /// </summary>
-    private string GetVersionFromPath(string filePath)
-    {
-        var match = VersionRegex.Match(filePath);
-        if (match.Success)
-        {
-            return match.Groups[1].Value;
-        }
-
-        return "";
-    }
-
-    /// <summary>
-    /// 从文件路径获取Mod根目录
-    /// </summary>
-    private string? GetModRootPath(string filePath)
-    {
-        var dir = Path.GetDirectoryName(filePath);
-        while (!string.IsNullOrEmpty(dir))
-        {
-            // 检查是否存在 About 或 Assemblies 目录
-            if (Directory.Exists(Path.Combine(dir, "About")) ||
-                Directory.Exists(Path.Combine(dir, "Assemblies")))
-            {
-                return dir;
-            }
-
-            dir = Path.GetDirectoryName(dir);
-        }
-
-        return null;
     }
 
     /// <summary>
