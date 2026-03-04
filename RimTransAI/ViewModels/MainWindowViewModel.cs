@@ -6,6 +6,7 @@ using System.Threading;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
+using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.DependencyInjection;
@@ -631,8 +632,8 @@ public partial class MainWindowViewModel : ViewModelBase
             config.ThreadIntervalMs);
 
         using var progressReporter = new ThreadSafeProgressReporter(
-            progress => { UpdateMultiThreadProgress(progress); },
-            log => LogOutput += $"\n{log}");
+            UpdateMultiThreadProgress,
+            AppendLogLine);
 
         using var multiThreadService = new MultiThreadedTranslationService();
 
@@ -661,8 +662,37 @@ public partial class MainWindowViewModel : ViewModelBase
 
     private void UpdateMultiThreadProgress(TranslationProgress progress)
     {
-        LogOutput =
-            $"多线程翻译进度: {progress.ProcessedBatches}/{progress.TotalBatches} 批次 | 正在运行 {progress.ActiveThreads} 个线程";
+        RunOnUiThread(() =>
+        {
+            LatestLogLine =
+                $"多线程翻译进度: {progress.ProcessedBatches}/{progress.TotalBatches} 批次 | 正在运行 {progress.ActiveThreads} 个线程";
+        });
+    }
+
+    private void AppendLogLine(string message)
+    {
+        if (string.IsNullOrWhiteSpace(message))
+        {
+            return;
+        }
+
+        RunOnUiThread(() =>
+        {
+            LogOutput = string.IsNullOrWhiteSpace(LogOutput)
+                ? message
+                : $"{LogOutput}\n{message}";
+        });
+    }
+
+    private static void RunOnUiThread(Action action)
+    {
+        if (Dispatcher.UIThread.CheckAccess())
+        {
+            action();
+            return;
+        }
+
+        Dispatcher.UIThread.Post(action);
     }
 
     [RelayCommand]

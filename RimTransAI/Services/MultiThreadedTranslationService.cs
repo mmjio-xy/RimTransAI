@@ -46,9 +46,11 @@ public class MultiThreadedTranslationService : IDisposable
         if (batchResult.Batches.Count == 0)
             return 0;
 
+        var processedBatches = 0;
+
         // 创建所有批次任务
         var tasks = batchResult.Batches
-            .Select((batch, index) => ProcessBatchAsync(
+            .Select((batch, index) => ProcessBatchWithProgressAsync(
                 batch,
                 index + 1,
                 batchResult.TotalBatches,
@@ -60,13 +62,51 @@ public class MultiThreadedTranslationService : IDisposable
                 targetLang,
                 requestTimeoutSeconds,
                 customPrompt,
+                () => Interlocked.Increment(ref processedBatches),
                 cancellationToken))
             .ToList();
 
         // 等待所有任务完成
         await Task.WhenAll(tasks);
 
-        return batchResult.TotalBatches;
+        return processedBatches;
+    }
+
+    private async Task ProcessBatchWithProgressAsync(
+        List<IGrouping<string, TranslationItem>> batch,
+        int batchIndex,
+        int totalBatches,
+        ConcurrencyManager concurrencyManager,
+        ThreadSafeProgressReporter progressReporter,
+        string apiKey,
+        string apiUrl,
+        string model,
+        string targetLang,
+        int requestTimeoutSeconds,
+        string? customPrompt,
+        Func<int> markBatchProcessed,
+        CancellationToken cancellationToken)
+    {
+        await ProcessBatchAsync(
+            batch,
+            batchIndex,
+            totalBatches,
+            concurrencyManager,
+            progressReporter,
+            apiKey,
+            apiUrl,
+            model,
+            targetLang,
+            requestTimeoutSeconds,
+            customPrompt,
+            cancellationToken);
+
+        var processed = markBatchProcessed();
+        progressReporter.ReportProgress(
+            processed,
+            totalBatches,
+            concurrencyManager.RunningCount,
+            $"批次 {batchIndex}/{totalBatches}");
     }
 
     /// <summary>
@@ -88,19 +128,21 @@ public class MultiThreadedTranslationService : IDisposable
     {
         try
         {
-            // 报告批次开始
-            progressReporter.ReportLog($"开始处理批次 {batchIndex}/{totalBatches}，包含 {batch.Count} 个翻译组");
-
             // 使用并发控制器执行翻译
-            var translations = await concurrencyManager.ExecuteAsync(async ct => await _llmService.TranslateBatchAsync(
-                apiKey,
-                BuildSourceDictionary(batch),
-                apiUrl,
-                model,
-                targetLang,
-                customPrompt,
-                requestTimeoutSeconds,
-                ct), cancellationToken);
+            var translations = await concurrencyManager.ExecuteAsync(async ct =>
+            {
+                // 进入受控并发区后再记“开始”，避免日志看起来所有批次同时启动。
+                progressReporter.ReportLog($"开始处理批次 {batchIndex}/{totalBatches}，包含 {batch.Count} 个翻译组");
+                return await _llmService.TranslateBatchAsync(
+                    apiKey,
+                    BuildSourceDictionary(batch),
+                    apiUrl,
+                    model,
+                    targetLang,
+                    customPrompt,
+                    requestTimeoutSeconds,
+                    ct);
+            }, cancellationToken);
 
             // 应用翻译结果
             ApplyTranslations(batch, translations);

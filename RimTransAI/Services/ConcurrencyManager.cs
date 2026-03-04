@@ -89,12 +89,12 @@ public class ConcurrencyManager : IDisposable
     /// <summary>
     /// 获取当前可用的并发数
     /// </summary>
-    public int AvailableCount => _maxConcurrentRequests - _semaphore.CurrentCount;
+    public int AvailableCount => _semaphore.CurrentCount;
 
     /// <summary>
     /// 获取当前正在执行的操作数
     /// </summary>
-    public int RunningCount => _semaphore.CurrentCount;
+    public int RunningCount => _maxConcurrentRequests - _semaphore.CurrentCount;
 
     /// <summary>
     /// 释放资源

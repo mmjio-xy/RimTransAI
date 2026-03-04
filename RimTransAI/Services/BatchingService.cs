@@ -79,7 +79,7 @@ public class BatchingService
         foreach (var group in oversizedGroups)
         {
             result.Batches.Add(new List<IGrouping<string, TranslationItem>> { group });
-            result.BatchTokenCounts.Add(TokenEstimator.EstimateTokens(group.Key));
+            result.BatchTokenCounts.Add(TokenEstimator.EstimateTranslationEntryTokens(group.Key));
             result.OversizedBatches++;
         }
 
@@ -110,8 +110,8 @@ public class BatchingService
 
         foreach (var group in sortedGroups)
         {
-            // 估算当前项的 Token 数（包含 JSON 开销）
-            int itemTokens = TokenEstimator.EstimateTokens(group.Key) + 4;
+            // 估算当前项在请求体中的 Token 数（key+value+JSON 开销）
+            int itemTokens = TokenEstimator.EstimateTranslationEntryTokens(group.Key);
 
             // 判断是否需要开启新批次
             bool shouldStartNewBatch = false;

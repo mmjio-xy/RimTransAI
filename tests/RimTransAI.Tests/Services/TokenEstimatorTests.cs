@@ -34,7 +34,7 @@ public class TokenEstimatorTests
     {
         // 中文约 1.5 token/字符
         var result = TokenEstimator.EstimateTokens("你好世界"); // 4 个中文字符
-        result.Should().BeGreaterOrEqualTo(4); // 至少 4 * 1.5 = 6 tokens
+        result.Should().BeGreaterOrEqualTo(6); // 至少 4 * 1.5 = 6 tokens
     }
 
     [Fact]
@@ -42,5 +42,26 @@ public class TokenEstimatorTests
     {
         var result = TokenEstimator.EstimateTokens("Hello 世界");
         result.Should().BeGreaterThan(0);
+    }
+
+    [Fact]
+    public void EstimateTranslationEntryTokens_DuplicatedKeyValue_IncludesBothSidesAndOverhead()
+    {
+        var text = "Hello world";
+        var textTokens = TokenEstimator.EstimateTokens(text);
+
+        var result = TokenEstimator.EstimateTranslationEntryTokens(text);
+
+        result.Should().Be(textTokens * 2 + 4);
+    }
+
+    [Fact]
+    public void IsOversizedText_UsesRequestEntryFootprint()
+    {
+        // 2000 个英文字符大约 500 tokens，按请求条目口径约 1004 tokens（含 JSON 开销）
+        var text = new string('a', 2000);
+        var oversized = TokenEstimator.IsOversizedText(text, 2000); // 安全上限 1600，阈值 800
+
+        oversized.Should().BeTrue();
     }
 }

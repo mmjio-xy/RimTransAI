@@ -75,6 +75,24 @@ public static class TokenEstimator
     }
 
     /// <summary>
+    /// 估算翻译请求中单个条目的 Token 数量。
+    /// 在当前请求格式下，一个条目会同时出现在 key 与 value 中。
+    /// </summary>
+    /// <param name="text">原文文本</param>
+    /// <returns>该条目在请求体中的估算 Token 数</returns>
+    public static int EstimateTranslationEntryTokens(string text)
+    {
+        var textTokens = EstimateTokens(text);
+        if (textTokens == 0)
+        {
+            return 0;
+        }
+
+        // {"source":"source"} => 文本出现两次 + JSON 结构开销
+        return (textTokens * 2) + JsonKeyValueOverhead;
+    }
+
+    /// <summary>
     /// 计算安全的 Token 限制（应用安全边际）
     /// </summary>
     /// <param name="maxTokens">原始 Token 限制</param>
@@ -92,7 +110,7 @@ public static class TokenEstimator
     /// <returns>是否为超长文本</returns>
     public static bool IsOversizedText(string text, int maxTokensPerBatch)
     {
-        int tokens = EstimateTokens(text);
+        int tokens = EstimateTranslationEntryTokens(text);
         int safeLimit = GetSafeTokenLimit(maxTokensPerBatch);
         return tokens > safeLimit / 2;
     }
