@@ -2,6 +2,7 @@
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:RimTransAI.ViewModels"
         xmlns:views="using:RimTransAI.Views"
+        xmlns:converters="using:RimTransAI.Converters"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:iconMaterial="clr-namespace:IconPacks.Avalonia.Material;assembly=IconPacks.Avalonia.Material"
@@ -15,6 +16,11 @@
         Icon="avares://RimTransAI/Assets/RimTrans.ico"
         SystemDecorations="Full"
         Background="{DynamicResource SemiColorBackground0}">
+
+    <Window.Resources>
+        <converters:LogColorConverter x:Key="LogColorConverter"/>
+        <converters:LogLineSplitterConverter x:Key="LogLineSplitterConverter"/>
+    </Window.Resources>
 
     <Grid RowDefinitions="30,*,Auto">
         <Grid Grid.Row="0" ColumnDefinitions="Auto,*" Margin="12,4,12,0">
@@ -243,7 +249,16 @@
                     CornerRadius="6"
                     Padding="10">
                 <ScrollViewer Height="130" VerticalScrollBarVisibility="Auto">
-                    <TextBlock Text="{Binding LogOutput}" TextWrapping="Wrap" Foreground="{DynamicResource SemiColorText2}" FontSize="12"/>
+                    <ItemsControl ItemsSource="{Binding LogOutput, Converter={StaticResource LogLineSplitterConverter}}">
+                        <ItemsControl.ItemTemplate>
+                            <DataTemplate>
+                                <TextBlock Text="{Binding}"
+                                          Foreground="{Binding Converter={StaticResource LogColorConverter}}"
+                                          TextWrapping="Wrap"
+                                          FontSize="12"/>
+                            </DataTemplate>
+                        </ItemsControl.ItemTemplate>
+                    </ItemsControl>
                 </ScrollViewer>
             </Border>
         </Expander>
