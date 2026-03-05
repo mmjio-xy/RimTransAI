@@ -17,7 +17,7 @@
         SystemDecorations="Full"
         Background="{DynamicResource SemiColorBackground0}">
 
-    <Grid RowDefinitions="Auto,*,Auto" Margin="0,30,0,0">
+    <Grid RowDefinitions="Auto,*,Auto" Margin="0">
         <TextBlock Grid.Row="0"
                    Text="{Binding DialogTitle}"
                    Classes="H4"

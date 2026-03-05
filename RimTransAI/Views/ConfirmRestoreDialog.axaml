@@ -3,6 +3,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="using:RimTransAI.ViewModels"
+        xmlns:iconMaterial="clr-namespace:IconPacks.Avalonia.Material;assembly=IconPacks.Avalonia.Material"
         mc:Ignorable="d" d:DesignWidth="500" d:DesignHeight="300"
         x:Class="RimTransAI.Views.ConfirmRestoreDialog"
         x:DataType="vm:ConfirmRestoreDialogViewModel"
@@ -14,7 +15,7 @@
         SystemDecorations="Full"
         Background="{DynamicResource SemiColorBackground0}">
 
-    <Grid RowDefinitions="Auto, *, Auto" Margin="0,30,0,0">
+    <Grid RowDefinitions="Auto, *, Auto" Margin="0">
         <!-- 标题 -->
         <TextBlock Grid.Row="0"
                    Text="确认恢复备份"
@@ -27,27 +28,25 @@
             <StackPanel Spacing="15">
 
                 <!-- 警告提示 -->
-                <Border Background="#FFF3E0"
-                        BorderBrush="#FFB74D"
+                <Border Background="{DynamicResource SemiColorFill1}"
+                        BorderBrush="{DynamicResource SemiColorWarning}"
                         BorderThickness="1"
                         CornerRadius="4"
                         Padding="15">
                     <StackPanel Spacing="8">
                         <StackPanel Orientation="Horizontal" Spacing="8">
-                            <Path Data="M12,2L1,21H23M12,6L19.53,19H4.47M11,10V14H13V10M11,16V18H13V16"
-                                  Fill="#E65100"
-                                  Width="20"
-                                  Height="20"
-                                  Stretch="Uniform"
-                                  VerticalAlignment="Center"/>
+                            <iconMaterial:PackIconMaterial Kind="AlertOutline"
+                                                           Width="20" Height="20"
+                                                           Foreground="{DynamicResource SemiColorWarning}"
+                                                           VerticalAlignment="Center"/>
                             <TextBlock Text="⚠️ 注意：恢复操作不可撤销！"
                                        FontWeight="Bold"
-                                       Foreground="#E65100"
+                                       Foreground="{DynamicResource SemiColorWarning}"
                                        VerticalAlignment="Center"/>
                         </StackPanel>
                         <TextBlock Text="恢复将导致当前文件夹内的文件全部丢失，请谨慎操作。"
                                    FontSize="13"
-                                   Foreground="#BF360C"
+                                   Foreground="{DynamicResource SemiColorText1}"
                                    TextWrapping="Wrap"/>
                     </StackPanel>
                 </Border>

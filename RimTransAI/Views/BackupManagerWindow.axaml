@@ -48,7 +48,7 @@
          </Style>
      </Window.Styles>
 
-     <Grid RowDefinitions="Auto, Auto, *, Auto" Margin="0,30,0,0">
+     <Grid RowDefinitions="Auto, Auto, *, Auto" Margin="0">
         <!-- 标题 -->
         <TextBlock Grid.Row="0"
                    Text="备份管理"
@@ -105,7 +105,6 @@
          <DataGrid Grid.Row="2"
                    x:Name="BackupGrid"
                    ItemsSource="{Binding Backups}"
-                   Tag="{Binding}"
                    IsReadOnly="True"
                    CanUserResizeColumns="True"
                    GridLinesVisibility="All"
@@ -125,13 +124,13 @@
                             <StackPanel Orientation="Horizontal" Spacing="0" VerticalAlignment="Center">
                                 <Button Content="▲" FontSize="9"
                                         Classes="sort-btn"
-                                        Classes.active="{Binding !#BackupGrid.((vm:BackupManagerViewModel)Tag).IsSortDescending}"
-                                        Command="{Binding #BackupGrid.((vm:BackupManagerViewModel)Tag).SortAscendingCommand}"
+                                        Classes.active="{Binding !$parent[Window].((vm:BackupManagerViewModel)DataContext).IsSortDescending}"
+                                        Command="{Binding $parent[Window].((vm:BackupManagerViewModel)DataContext).SortAscendingCommand}"
                                         ToolTip.Tip="升序（最早优先）"/>
                                 <Button Content="▼" FontSize="9"
                                         Classes="sort-btn"
-                                        Classes.active="{Binding #BackupGrid.((vm:BackupManagerViewModel)Tag).IsSortDescending}"
-                                        Command="{Binding #BackupGrid.((vm:BackupManagerViewModel)Tag).SortDescendingCommand}"
+                                        Classes.active="{Binding $parent[Window].((vm:BackupManagerViewModel)DataContext).IsSortDescending}"
+                                        Command="{Binding $parent[Window].((vm:BackupManagerViewModel)DataContext).SortDescendingCommand}"
                                         ToolTip.Tip="降序（最新优先）"/>
                             </StackPanel>
                         </StackPanel>
@@ -151,12 +150,12 @@
                         <DataTemplate>
                             <StackPanel Orientation="Horizontal" Spacing="10" HorizontalAlignment="Center">
                                 <Button Content="恢复"
-                                        Command="{Binding #BackupGrid.((vm:BackupManagerViewModel)Tag).RestoreBackupCommand}"
+                                        Command="{Binding $parent[Window].((vm:BackupManagerViewModel)DataContext).RestoreBackupCommand}"
                                         CommandParameter="{Binding}"
                                         Theme="{DynamicResource OutlineButton}"
                                         Classes="Success"/>
                                 <Button Content="删除"
-                                        Command="{Binding #BackupGrid.((vm:BackupManagerViewModel)Tag).DeleteSelectedBackupCommand}"
+                                        Command="{Binding $parent[Window].((vm:BackupManagerViewModel)DataContext).DeleteSelectedBackupCommand}"
                                         CommandParameter="{Binding}"
                                         Theme="{DynamicResource OutlineButton}"
                                         Classes="Danger"/>
