@@ -81,7 +81,7 @@
                                        Foreground="{DynamicResource SemiColorText2}" />
 
                             <!-- 描述 -->
-                            <TextBlock Text="{Binding Description}"
+                            <TextBlock x:Name="ModDescriptionTextBlock"
                                        FontSize="12"
                                        TextWrapping="Wrap"
                                        LineHeight="18"

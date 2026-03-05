@@ -1,6 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:RimTransAI.ViewModels"
+        xmlns:views="using:RimTransAI.Views"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:iconMaterial="clr-namespace:IconPacks.Avalonia.Material;assembly=IconPacks.Avalonia.Material"
@@ -62,93 +63,9 @@
         <Grid Grid.Row="1" ColumnDefinitions="27*,4,26*,4,47*" Margin="12,8,12,8">
 
             <!-- 左栏：Mod 信息 -->
-            <Border Grid.Column="0"
-                    Background="{DynamicResource SemiColorBackground0}"
-                    BorderBrush="{DynamicResource SemiColorBorder}"
-                    BorderThickness="1"
-                    CornerRadius="8"
-                    Padding="14"
-                    Margin="0,0,10,0">
-                <ScrollViewer VerticalScrollBarVisibility="Auto">
-                    <StackPanel Spacing="12">
-                        <StackPanel Orientation="Horizontal" Spacing="8">
-                            <iconMaterial:PackIconMaterial Kind="InformationOutline"
-                                                           Width="18"
-                                                           Height="18"
-                                                           Foreground="{DynamicResource SemiColorText1}"/>
-                            <TextBlock Text="Mod 信息" Classes="H5" Theme="{DynamicResource TitleTextBlock}"/>
-                        </StackPanel>
-
-                        <Border CornerRadius="8" Background="{DynamicResource SemiColorFill0}" Padding="8" ClipToBounds="True">
-                            <Image Source="{Binding ModInfoViewModel.PreviewImage}" Height="170" Stretch="UniformToFill"/>
-                        </Border>
-
-                        <TextBlock Text="{Binding ModInfoViewModel.Name}" FontSize="18" FontWeight="Bold" TextWrapping="Wrap"/>
-                        <TextBlock Text="{Binding ModInfoViewModel.Author, StringFormat='作者: {0}'}"
-                                   Foreground="{DynamicResource SemiColorText2}"
-                                   TextWrapping="Wrap"/>
-                        <StackPanel Spacing="2">
-                            <TextBlock Text="简介:" FontSize="12" Foreground="{DynamicResource SemiColorText3}"/>
-                            <TextBlock x:Name="ModDescriptionTextBlock"
-                                       TextWrapping="Wrap"
-                                       Foreground="{DynamicResource SemiColorText2}"/>
-                        </StackPanel>
-                        <StackPanel Spacing="2">
-                            <TextBlock Text="包ID:" FontSize="12" Foreground="{DynamicResource SemiColorText3}"/>
-                            <TextBlock Text="{Binding ModInfoViewModel.PackageId}"
-                                       FontFamily="Consolas,Courier New"
-                                       Foreground="{DynamicResource SemiColorText2}"
-                                       TextWrapping="NoWrap"
-                                       TextTrimming="CharacterEllipsis"
-                                       ToolTip.Tip="{Binding ModInfoViewModel.PackageId}"/>
-                        </StackPanel>
-
-                        <StackPanel Spacing="8">
-                            <TextBlock Text="Mod目录:" FontSize="12" Foreground="{DynamicResource SemiColorText3}"/>
-                            <Button Command="{Binding ModInfoViewModel.OpenFolderCommand}"
-                                    Theme="{x:Null}"
-                                    Background="Transparent"
-                                    BorderBrush="Transparent"
-                                    BorderThickness="0"
-                                    Padding="0"
-                                    HorizontalAlignment="Stretch"
-                                    HorizontalContentAlignment="Stretch"
-                                    ToolTip.Tip="点击打开目录">
-                                <TextBlock Text="{Binding ModInfoViewModel.FolderPath}"
-                                           Foreground="#2E6E9E"
-                                           TextWrapping="NoWrap"
-                                           TextTrimming="CharacterEllipsis"
-                                           ToolTip.Tip="{Binding ModInfoViewModel.FolderPath}"/>
-                            </Button>
-
-                            <TextBlock Text="项目主页:" FontSize="12" Foreground="{DynamicResource SemiColorText3}"/>
-                            <Button Command="{Binding ModInfoViewModel.OpenUrlCommand}"
-                                    Theme="{x:Null}"
-                                    Background="Transparent"
-                                    BorderBrush="Transparent"
-                                    BorderThickness="0"
-                                    Padding="0"
-                                    HorizontalAlignment="Stretch"
-                                    HorizontalContentAlignment="Stretch"
-                                    IsVisible="{Binding ModInfoViewModel.HasUrl}">
-                                <ToolTip.Tip>
-                                    <Border MaxWidth="760" Padding="4">
-                                        <TextBlock Text="{Binding ModInfoViewModel.ResolvedUrl}"
-                                                   TextWrapping="Wrap"/>
-                                    </Border>
-                                </ToolTip.Tip>
-                                <TextBlock Text="{Binding ModInfoViewModel.ResolvedUrl}"
-                                           Foreground="#2E6E9E"
-                                           TextWrapping="NoWrap"
-                                           TextTrimming="CharacterEllipsis"/>
-                            </Button>
-                            <TextBlock Text="(无项目主页)"
-                                       Foreground="{DynamicResource SemiColorText3}"
-                                       IsVisible="{Binding !ModInfoViewModel.HasUrl}"/>
-                        </StackPanel>
-                    </StackPanel>
-                </ScrollViewer>
-            </Border>
+            <views:ModInfoPanel Grid.Column="0"
+                                DataContext="{Binding ModInfoViewModel}"
+                                Margin="0,0,10,0"/>
 
             <GridSplitter Grid.Column="1"
                           Background="Transparent"
