@@ -517,7 +517,9 @@ public class ReflectionAnalyzer
         if (field.IsStatic) return false;
         
         
-        if (field.CustomAttributes.Any(attr => attr.AttributeType.Name == "NoTranslateAttribute")) 
+        if (field.CustomAttributes.Any(attr =>
+            attr.AttributeType.Name == "NoTranslateAttribute" ||
+            attr.AttributeType.Name == "UnsavedAttribute"))
             return false;
 
         //  允许自动属性的后台字段
