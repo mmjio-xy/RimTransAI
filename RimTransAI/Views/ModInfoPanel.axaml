@@ -109,22 +109,6 @@
                                            TextWrapping="Wrap" />
                             </StackPanel>
 
-                            <!-- 项目主页 -->
-                            <StackPanel Spacing="4"
-                                        IsVisible="{Binding HasUrl}">
-                                <TextBlock Text="项目主页"
-                                           FontSize="11"
-                                           FontWeight="SemiBold"
-                                           Foreground="{DynamicResource SemiColorText3}" />
-                                <Button Content="{Binding Url}"
-                                        Command="{Binding OpenUrlCommand}"
-                                        Theme="{DynamicResource HyperlinkButton}"
-                                        Foreground="{DynamicResource SemiColorPrimary}"
-                                        FontSize="12"
-                                        Padding="0"
-                                        HorizontalAlignment="Left" />
-                            </StackPanel>
-
                             <!-- 支持版本 -->
                             <StackPanel Spacing="4"
                                         IsVisible="{Binding HasSupportedVersions}">
@@ -155,32 +139,55 @@
                         </StackPanel>
                     </Border>
 
-                    <!-- 4. Mod 路径卡片 -->
+                    <!-- 4. 项目主页与 Mod 路径卡片 -->
                     <Border Background="{DynamicResource SemiColorFill0}"
                             BorderBrush="{DynamicResource SemiColorBorder}"
                             BorderThickness="1"
                             CornerRadius="8"
                             Padding="16">
-                        <StackPanel Spacing="8">
-                            <TextBlock Text="Mod 路径"
-                                       FontSize="11"
-                                       FontWeight="SemiBold"
-                                       Foreground="{DynamicResource SemiColorText3}" />
-
-                            <Button Command="{Binding OpenFolderCommand}"
-                                    HorizontalAlignment="Stretch"
-                                    HorizontalContentAlignment="Left"
-                                    Theme="{DynamicResource TertiaryButton}"
-                                    Padding="8">
-                                <TextBlock Text="{Binding FolderPath}"
+                        <StackPanel Spacing="12">
+                            <!-- 项目主页 -->
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="项目主页"
                                            FontSize="11"
-                                           TextWrapping="Wrap"
-                                           Foreground="{DynamicResource SemiColorText1}" />
-                            </Button>
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource SemiColorText3}" />
+                                <Button Content="{Binding ResolvedUrl}"
+                                        Command="{Binding OpenUrlCommand}"
+                                        Theme="{DynamicResource HyperlinkButton}"
+                                        Foreground="{DynamicResource SemiColorPrimary}"
+                                        FontSize="11"
+                                        Padding="0"
+                                        HorizontalAlignment="Left"
+                                        IsVisible="{Binding HasUrl}" />
+                                <TextBlock Text="(无)"
+                                           FontSize="11"
+                                           Foreground="{DynamicResource SemiColorText3}"
+                                           IsVisible="{Binding !HasUrl}" />
+                            </StackPanel>
 
-                            <TextBlock Text="点击打开文件夹"
-                                       FontSize="10"
-                                       Foreground="{DynamicResource SemiColorText3}" />
+                            <!-- Mod 路径 -->
+                            <StackPanel Spacing="4">
+                                <TextBlock Text="Mod 路径"
+                                           FontSize="11"
+                                           FontWeight="SemiBold"
+                                           Foreground="{DynamicResource SemiColorText3}" />
+
+                                <Button Command="{Binding OpenFolderCommand}"
+                                        HorizontalAlignment="Stretch"
+                                        HorizontalContentAlignment="Left"
+                                        Theme="{DynamicResource TertiaryButton}"
+                                        Padding="8">
+                                    <TextBlock Text="{Binding FolderPath}"
+                                               FontSize="11"
+                                               TextWrapping="Wrap"
+                                               Foreground="{DynamicResource SemiColorText1}" />
+                                </Button>
+
+                                <TextBlock Text="点击打开文件夹"
+                                           FontSize="10"
+                                           Foreground="{DynamicResource SemiColorText3}" />
+                            </StackPanel>
                         </StackPanel>
                     </Border>
 
