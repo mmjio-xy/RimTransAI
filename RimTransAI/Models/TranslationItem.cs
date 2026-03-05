@@ -36,4 +36,8 @@ public partial class TranslationItem : ObservableObject
 
     // 提取上下文（例如 DefName/Path/Type）
     public string ExtractionSourceContext { get; set; } = string.Empty;
+
+    // 是否为整体列表翻译（标记了 [TranslationCanChangeCount] 的字段）
+    // 如果为 true，OriginalText 包含多个列表项（换行分隔），生成时使用 <li> 格式
+    public bool IsListReplacement { get; set; } = false;
 }

@@ -355,6 +355,40 @@ public class ReflectionAnalyzer
     }
 
     /// <summary>
+    /// 检查指定类型的字段是否有 [TranslationCanChangeCount] 特性
+    /// 允许翻译改变列表元素数量
+    /// </summary>
+    /// <param name="typeName">完整类型名（如 "Verse.Grammar.RulePack"）</param>
+    /// <param name="fieldName">字段名（如 "rulesStrings"）</param>
+    /// <returns>如果字段有该特性返回 true，否则返回 false</returns>
+    public bool CanChangeCount(string typeName, string fieldName)
+    {
+        if (string.IsNullOrWhiteSpace(typeName) || string.IsNullOrWhiteSpace(fieldName))
+        {
+            return false;
+        }
+
+        // 尝试从缓存中获取类型
+        if (!_typeCache.TryGetValue(typeName, out var type))
+        {
+            return false;
+        }
+
+        // 查找字段
+        var field = type.Fields.FirstOrDefault(f =>
+            f.Name.Equals(fieldName, StringComparison.Ordinal));
+
+        if (field == null)
+        {
+            return false;
+        }
+
+        // 检查是否有 [TranslationCanChangeCount] 特性
+        return field.CustomAttributes.Any(attr =>
+            attr.AttributeType.Name == "TranslationCanChangeCountAttribute");
+    }
+
+    /// <summary>
     /// 分析 Mod 类型（递归处理嵌套类型）
     /// </summary>
     private void AnalyzeModType(TypeDefinition type, Dictionary<string, HashSet<string>> result)

@@ -178,7 +178,29 @@ public class FileGeneratorService
             {
                 var safeOriginal = (item.OriginalText ?? string.Empty).Replace("--", "- -");
                 root.Add(new XComment($" EN: {safeOriginal} "));
-                root.Add(new XElement(item.Key, item.TranslatedText));
+
+                // 支持整体列表翻译（[TranslationCanChangeCount] 特性）
+                if (item.IsListReplacement)
+                {
+                    // 创建包含 <li> 子元素的节点
+                    var listElement = new XElement(item.Key);
+                    var translatedLines = (item.TranslatedText ?? string.Empty)
+                        .Split(new[] { '\r', '\n' }, StringSplitOptions.RemoveEmptyEntries)
+                        .Select(line => line.Trim())
+                        .Where(line => !string.IsNullOrWhiteSpace(line));
+
+                    foreach (var line in translatedLines)
+                    {
+                        listElement.Add(new XElement("li", line));
+                    }
+
+                    root.Add(listElement);
+                }
+                else
+                {
+                    // 普通字段翻译
+                    root.Add(new XElement(item.Key, item.TranslatedText));
+                }
             }
             catch (Exception ex)
             {
