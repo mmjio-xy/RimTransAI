@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
-using IconPacks.Avalonia.Material;
+using Material.Icons;
 using RimTransAI.Models;
 
 namespace RimTransAI.Services;
@@ -13,14 +13,14 @@ public class IconCatalogService
 {
     private static readonly SourceIconOption[] SourceIconPreset =
     {
-        new() { Key = nameof(PackIconMaterialKind.Folder), Label = "默认文件夹", Kind = PackIconMaterialKind.Folder },
-        new() { Key = nameof(PackIconMaterialKind.FolderOutline), Label = "文件夹(线框)", Kind = PackIconMaterialKind.FolderOutline },
-        new() { Key = nameof(PackIconMaterialKind.FolderCog), Label = "文件夹设置", Kind = PackIconMaterialKind.FolderCog },
-        new() { Key = nameof(PackIconMaterialKind.GamepadVariant), Label = "游戏", Kind = PackIconMaterialKind.GamepadVariant },
-        new() { Key = nameof(PackIconMaterialKind.HammerWrench), Label = "开发", Kind = PackIconMaterialKind.HammerWrench },
-        new() { Key = nameof(PackIconMaterialKind.RocketLaunch), Label = "发布", Kind = PackIconMaterialKind.RocketLaunch },
-        new() { Key = nameof(PackIconMaterialKind.Database), Label = "数据", Kind = PackIconMaterialKind.Database },
-        new() { Key = nameof(PackIconMaterialKind.Cloud), Label = "云端", Kind = PackIconMaterialKind.Cloud }
+        new() { Key = nameof(MaterialIconKind.Folder), Label = "默认文件夹", Kind = MaterialIconKind.Folder },
+        new() { Key = nameof(MaterialIconKind.FolderOutline), Label = "文件夹(线框)", Kind = MaterialIconKind.FolderOutline },
+        new() { Key = nameof(MaterialIconKind.FolderCog), Label = "文件夹设置", Kind = MaterialIconKind.FolderCog },
+        new() { Key = nameof(MaterialIconKind.GamepadVariant), Label = "游戏", Kind = MaterialIconKind.GamepadVariant },
+        new() { Key = nameof(MaterialIconKind.HammerWrench), Label = "开发", Kind = MaterialIconKind.HammerWrench },
+        new() { Key = nameof(MaterialIconKind.RocketLaunch), Label = "发布", Kind = MaterialIconKind.RocketLaunch },
+        new() { Key = nameof(MaterialIconKind.Database), Label = "数据", Kind = MaterialIconKind.Database },
+        new() { Key = nameof(MaterialIconKind.Cloud), Label = "云端", Kind = MaterialIconKind.Cloud }
     };
 
     public IReadOnlyList<SourceIconOption> GetSourceIconOptions()
@@ -28,17 +28,17 @@ public class IconCatalogService
         return SourceIconPreset;
     }
 
-    public PackIconMaterialKind ResolveSourceIconKind(string? iconKey, string stableSeed)
+    public MaterialIconKind ResolveSourceIconKind(string? iconKey, string stableSeed)
     {
         if (!string.IsNullOrWhiteSpace(iconKey)
-            && Enum.TryParse(iconKey, true, out PackIconMaterialKind explicitKind))
+            && Enum.TryParse(iconKey, true, out MaterialIconKind explicitKind))
         {
             return explicitKind;
         }
 
         if (string.IsNullOrWhiteSpace(stableSeed))
         {
-            return PackIconMaterialKind.Folder;
+            return MaterialIconKind.Folder;
         }
 
         var hash = Math.Abs(StringComparer.OrdinalIgnoreCase.GetHashCode(stableSeed));
@@ -49,7 +49,7 @@ public class IconCatalogService
     public string ResolveIconKey(string? iconKey, string stableSeed)
     {
         if (!string.IsNullOrWhiteSpace(iconKey)
-            && Enum.TryParse(iconKey, true, out PackIconMaterialKind explicitKind))
+            && Enum.TryParse(iconKey, true, out MaterialIconKind explicitKind))
         {
             return explicitKind.ToString();
         }

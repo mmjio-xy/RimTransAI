@@ -1,5 +1,5 @@
 using CommunityToolkit.Mvvm.ComponentModel;
-using IconPacks.Avalonia.Material;
+using Material.Icons;
 
 namespace RimTransAI.Models;
 
@@ -11,7 +11,7 @@ public partial class WorkspaceModItem : ObservableObject
     public string SourceFolderId { get; init; } = string.Empty;
     public string SourceDisplayName { get; init; } = string.Empty;
     public string SourceIconKey { get; init; } = string.Empty;
-    public PackIconMaterialKind SourceIconKind { get; init; } = PackIconMaterialKind.Folder;
+    public MaterialIconKind SourceIconKind { get; init; } = MaterialIconKind.Folder;
 
     public string ModPath { get; init; } = string.Empty;
     public string Name { get; init; } = string.Empty;
