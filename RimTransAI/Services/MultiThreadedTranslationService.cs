@@ -129,9 +129,11 @@ public class MultiThreadedTranslationService : IDisposable
         try
         {
             // 使用并发控制器执行翻译
+            Logger.Debug($"多线程批次 {batchIndex}/{totalBatches} — 等待并发槽 (翻译组: {batch.Count})");
             var translations = await concurrencyManager.ExecuteAsync(async ct =>
             {
                 // 进入受控并发区后再记“开始”，避免日志看起来所有批次同时启动。
+                Logger.Debug($"多线程批次 {batchIndex}/{totalBatches} — 开始发送请求");
                 progressReporter.ReportLog($"开始处理批次 {batchIndex}/{totalBatches}，包含 {batch.Count} 个翻译组");
                 return await _llmService.TranslateBatchAsync(
                     apiKey,
@@ -146,12 +148,14 @@ public class MultiThreadedTranslationService : IDisposable
 
             // 应用翻译结果
             ApplyTranslations(batch, translations);
+            Logger.Debug($"多线程批次 {batchIndex}/{totalBatches} — 结果已应用 ({translations.Count} 条)");
 
             // 报告批次完成
             progressReporter.ReportLog($"✓ 批次 {batchIndex}/{totalBatches} 完成，翻译 {batch.Count} 个文本");
         }
         catch (OperationCanceledException)
         {
+            Logger.Debug($"多线程批次 {batchIndex}/{totalBatches} — 已取消");
             progressReporter.ReportLog($"✗ 批次 {batchIndex}/{totalBatches} 已取消");
             throw; // 重新抛出以取消其他任务
         }
@@ -159,7 +163,7 @@ public class MultiThreadedTranslationService : IDisposable
         {
             // 批次级错误处理 - 不影响其他批次
             progressReporter.ReportLog($"✗ 批次 {batchIndex}/{totalBatches} 失败: {ex.Message}");
-            Logger.Error($"批次 {batchIndex}/{totalBatches} 翻译失败", ex);
+            Logger.Error($"多线程批次 {batchIndex}/{totalBatches} 翻译失败", ex);
 
             // 标记批次中的所有项为失败
             foreach (var group in batch)

@@ -54,6 +54,7 @@ public class ConcurrencyManager : IDisposable
         {
             // 获取信号量（限流）
             await _semaphore.WaitAsync(linkedCts.Token);
+            Logger.Debug($"并发槽已获取 | 剩余: {_semaphore.CurrentCount}/{_maxConcurrentRequests}");
 
             try
             {
@@ -70,6 +71,7 @@ public class ConcurrencyManager : IDisposable
             {
                 // 释放信号量
                 _semaphore.Release();
+                Logger.Debug($"并发槽已释放 | 剩余: {_semaphore.CurrentCount}/{_maxConcurrentRequests}");
             }
         }
         catch (OperationCanceledException) when (linkedCts.Token.IsCancellationRequested)

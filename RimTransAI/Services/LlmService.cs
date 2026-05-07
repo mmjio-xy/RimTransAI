@@ -64,6 +64,8 @@ public class LlmService : IDisposable
         if (sourceTexts.Count == 0) return new Dictionary<string, string>();
 
         var requestUrl = NormalizeApiUrl(apiUrl);
+        Logger.Debug($"LLM 请求 — URL: {requestUrl} | 模型: {model} | 条目数: {sourceTexts.Count} | 超时: {requestTimeoutSeconds}s");
+
         var timeoutSeconds = Math.Clamp(requestTimeoutSeconds, 30, 1800);
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
@@ -98,24 +100,32 @@ public class LlmService : IDisposable
         using var request = new HttpRequestMessage(HttpMethod.Post, requestUrl);
         request.Headers.Add("Authorization", $"Bearer {apiKey}");
         request.Content = new StringContent(jsonBody, Encoding.UTF8, "application/json");
+        Logger.Debug($"LLM 请求体大小: {jsonBody.Length} 字节");
 
         HttpResponseMessage response;
         try
         {
             response = await _httpClient.SendAsync(request, timeoutCts.Token);
+            Logger.Debug($"LLM 响应 — 状态码: {(int)response.StatusCode} {response.StatusCode}");
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && timeoutCts.IsCancellationRequested)
         {
+            Logger.Warning($"LLM 请求超时（{timeoutSeconds} 秒）");
             throw new TimeoutException($"API 请求超时（{timeoutSeconds} 秒）");
         }
 
         using (response)
         {
-            response.EnsureSuccessStatusCode();
+            if (!response.IsSuccessStatusCode)
+            {
+                var errorBody = await response.Content.ReadAsStringAsync(timeoutCts.Token);
+                Logger.Error($"LLM HTTP {(int)response.StatusCode}: {errorBody}");
+                response.EnsureSuccessStatusCode();
+            }
 
-            // 5. 解析响应 (这里稍微麻烦点，因为我们没定义 Response 类，可以暂时用 JsonNode)
-            // 1. 先作为普通字符串读取出来
+            // 5. 解析响应
             var rawResponse = await response.Content.ReadAsStringAsync(timeoutCts.Token);
+            Logger.Debug($"LLM 响应体大小: {rawResponse.Length} 字节");
 
             // 2. 使用生成的 AOT 上下文手动反序列化
             var jsonResponse = JsonSerializer.Deserialize(
@@ -124,7 +134,11 @@ public class LlmService : IDisposable
             );
             var content = jsonResponse?["choices"]?[0]?["message"]?["content"]?.ToString();
 
-            if (string.IsNullOrEmpty(content)) return new Dictionary<string, string>();
+            if (string.IsNullOrEmpty(content))
+            {
+                Logger.Warning("LLM 返回空 content — API 可能拒绝了请求或模型不支持 JSON 输出");
+                return new Dictionary<string, string>();
+            }
 
             try
             {
@@ -132,37 +146,41 @@ public class LlmService : IDisposable
                 content = content.Trim();
                 if (content.StartsWith("```json"))
                 {
-                    content = content.Substring(7); // 移除 "```json"
+                    content = content.Substring(7);
                 }
                 else if (content.StartsWith("```"))
                 {
-                    content = content.Substring(3); // 移除 "```"
+                    content = content.Substring(3);
                 }
 
                 if (content.EndsWith("```"))
                 {
-                    content = content.Substring(0, content.Length - 3); // 移除结尾的 "```"
+                    content = content.Substring(0, content.Length - 3);
                 }
 
                 content = content.Trim();
 
                 // 使用 Context 反序列化结果字典
-                return JsonSerializer.Deserialize(content, AppJsonContext.Default.DictionaryStringString)
-                       ?? new Dictionary<string, string>();
+                var result = JsonSerializer.Deserialize(content, AppJsonContext.Default.DictionaryStringString)
+                             ?? new Dictionary<string, string>();
+                Logger.Debug($"LLM 翻译结果: {result.Count}/{sourceTexts.Count} 条成功");
+                return result;
             }
             catch (JsonException ex)
             {
-                Logger.Error($"JSON解析失败: {ex.Message}");
-                Logger.Error($"响应内容: {content}");
+                Logger.Error($"LLM JSON 解析失败: {ex.Message}");
+                Logger.Error($"LLM 原始响应内容 ({content.Length} 字符): {content}");
                 return new Dictionary<string, string>();
             }
             catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && timeoutCts.IsCancellationRequested)
             {
+                Logger.Warning($"LLM 响应读取超时（{timeoutSeconds} 秒）");
                 throw new TimeoutException($"API 响应读取超时（{timeoutSeconds} 秒）");
             }
             catch (Exception ex)
             {
-                Logger.Error($"翻译结果处理失败: {ex.GetType().Name} - {ex.Message}");
+                Logger.Error($"LLM 结果处理失败: {ex.GetType().Name} - {ex.Message}");
+                Logger.Debug($"LLM 异常时原始内容: {content}");
                 return new Dictionary<string, string>();
             }
         }

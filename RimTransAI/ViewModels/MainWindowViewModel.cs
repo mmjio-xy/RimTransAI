@@ -506,8 +506,7 @@ public partial class MainWindowViewModel : ViewModelBase
         int totalItems = allItems.Count;
         int processedGroups = 0;
 
-        LogOutput = $"开始翻译：{SelectedMod.Name} 共 {totalItems} 条，去重后 {totalGroups} 条文本。";
-        LogOutput += $"\n模型: {config.TargetModel} | 目标: {config.TargetLanguage}";
+        Logger.Info($"开始翻译: {SelectedMod.Name} | 条目: {totalItems} | 去重: {totalGroups} | 模型: {config.TargetModel}");
 
         var batchResult = _batchingService.CreateBatches(
             distinctGroups,
@@ -519,6 +518,9 @@ public partial class MainWindowViewModel : ViewModelBase
         var batches = batchResult.Batches;
         int totalBatches = batchResult.TotalBatches;
 
+        Logger.Debug($"分批结果: {totalBatches} 批次 | 超大: {batchResult.OversizedBatches} | API: {config.ApiUrl}");
+        LogOutput = $"开始翻译：{SelectedMod.Name} 共 {totalItems} 条，去重后 {totalGroups} 条文本。";
+        LogOutput += $"\n模型: {config.TargetModel} | 目标: {config.TargetLanguage}";
         LogOutput += $"\n智能分批: {totalBatches} 批次";
 
         try
@@ -582,6 +584,7 @@ public partial class MainWindowViewModel : ViewModelBase
                     }
                     catch (Exception ex)
                     {
+                        Logger.Error($"单线程批次 {i + 1}/{totalBatches} 失败 | {ex.GetType().Name}: {ex.Message}");
                         LogOutput += $"\n批次 {i + 1} 失败: {ex.Message}";
                         foreach (var group in batch)
                         {
@@ -601,6 +604,7 @@ public partial class MainWindowViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
+            Logger.Error($"翻译过程致命错误: {ex.GetType().Name} — {ex.Message}", ex);
             LogOutput += $"\n发生致命错误: {ex.Message}";
         }
         finally
