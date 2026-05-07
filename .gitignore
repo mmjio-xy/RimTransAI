@@ -21,3 +21,4 @@ CHANGELOG.md
 **/AGENTS.md
 CONTRIBUTING.md
 docs/*
+.spec-workflow/
