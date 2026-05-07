@@ -14,7 +14,7 @@
         CanResize="True"
         MinWidth="800"
         MinHeight="500"
-        SystemDecorations="Full"
+        WindowDecorations="Full"
         Background="{DynamicResource SemiColorBackground0}">
 
      <Window.Resources>
@@ -85,7 +85,7 @@
                     </ComboBox>
                     <Grid VerticalAlignment="Center">
                         <TextBox Text="{Binding SearchText}"
-                                 Watermark="输入搜索关键词..."
+                                 PlaceholderText="输入搜索关键词..."
                                  Width="200"
                                  Padding="8,6,28,6"/>
                         <Button Content="✕" FontSize="10"

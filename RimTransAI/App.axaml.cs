@@ -1,8 +1,6 @@
 using System;
-using System.Diagnostics.CodeAnalysis;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
-using Avalonia.Data.Core.Plugins;
 using Avalonia.Markup.Xaml;
 using Avalonia.Styling;
 using Microsoft.Extensions.DependencyInjection;
@@ -66,14 +64,12 @@ public partial class App : Application
 
             // 3. 应用调试模式设置
             Logger.SetDebugMode(configService.CurrentConfig.DebugMode);
+            Logger.Info($"调试模式: {(configService.CurrentConfig.DebugMode ? "已启用" : "已禁用")}");
+            Logger.Debug($"API 配置 — URL: {configService.CurrentConfig.ApiUrl} | 模型: {configService.CurrentConfig.TargetModel} | 超时: {configService.CurrentConfig.ApiRequestTimeoutSeconds}s");
 
             // 4. 启动主窗口
             if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)
             {
-                // 移除 Avalonia 自带的数据验证，避免重复验证
-                // 抑制 IL2026 警告：这是 Avalonia 框架的已知行为，在运行时是安全的
-                DisableAvaloniaDataValidation();
-
                 var vm = Services.GetRequiredService<MainWindowViewModel>();
                 desktop.MainWindow = new MainWindow
                 {
@@ -90,13 +86,6 @@ public partial class App : Application
             Logger.Error("框架初始化失败", ex);
             throw;
         }
-    }
-
-    [UnconditionalSuppressMessage("Trimming", "IL2026:Members annotated with 'RequiresUnreferencedCodeAttribute' require dynamic access",
-        Justification = "Avalonia data validation removal is safe in this context")]
-    private static void DisableAvaloniaDataValidation()
-    {
-        BindingPlugins.DataValidators.RemoveAt(0);
     }
 
     // === 静态切换主题方法 ===

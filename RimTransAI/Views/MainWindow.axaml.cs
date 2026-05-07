@@ -13,6 +13,15 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
+    /// 自定义标题栏拖拽
+    /// </summary>
+    private void OnTitleBarPointerPressed(object? sender, Avalonia.Input.PointerPressedEventArgs e)
+    {
+        if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+            BeginMoveDrag(e);
+    }
+
+    /// <summary>
     /// 处理单元格编辑完成事件
     /// </summary>
     private void OnCellEditEnding(object? sender, DataGridCellEditEndingEventArgs e)
