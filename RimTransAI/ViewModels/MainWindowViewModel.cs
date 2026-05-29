@@ -148,8 +148,8 @@ public partial class MainWindowViewModel : ViewModelBase
 
         if (_modItemsCache.TryGetValue(value.ModPath, out var cachedItems))
         {
-            BindItems(cachedItems, editable: false, snapshotOnly: true);
-            CurrentDataState = "缓存快照（只读）。点击“刷新翻译条目”重新扫描并进入可编辑状态。";
+            BindItems(cachedItems, editable: true, snapshotOnly: false);
+            CurrentDataState = "已加载（缓存），可编辑。";
         }
         else
         {
