@@ -287,8 +287,21 @@
                                 <TextBlock Text=" *" Foreground="#E53935" FontWeight="Bold"/>
                             </StackPanel>
                             <TextBox Text="{Binding ApiUrl}" PlaceholderText="例如: https://api.openai.com"/>
-                            <TextBlock Text="提示: 只需填写 Base URL，程序会自动补全 /v1/chat/completions"
-                                       FontSize="12" Foreground="{DynamicResource SemiColorText3}"/>
+                            <!-- 自动补全开关 -->
+                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                                <ToggleSwitch Grid.Column="0"
+                                              IsChecked="{Binding AutoCompleteApiUrl}"
+                                              VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="1"
+                                           VerticalAlignment="Center"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource SemiColorText3}"
+                                           Text="自动补全 /v1/chat/completions 路径"/>
+                            </Grid>
+                            <TextBlock Text="开启：填写域名即可，程序自动拼接完整路径。&#10;关闭：直接使用您填写的地址，不做任何拼接（适用于自定义代理等非标准路径）。"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource SemiColorText2}"
+                                       TextWrapping="Wrap"/>
                         </StackPanel>
 
                         <!-- API Key（必填） -->

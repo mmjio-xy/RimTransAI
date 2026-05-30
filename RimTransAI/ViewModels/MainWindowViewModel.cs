@@ -556,6 +556,7 @@ public partial class MainWindowViewModel : ViewModelBase
                                 ? config.CustomPrompt
                                 : null,
                             config.ApiRequestTimeoutSeconds,
+                            config.AutoCompleteApiUrl,
                             cancellationToken
                         );
 
@@ -655,6 +656,7 @@ public partial class MainWindowViewModel : ViewModelBase
                 config.TargetLanguage,
                 config.ApiRequestTimeoutSeconds,
                 config.UseCustomPrompt && !string.IsNullOrWhiteSpace(config.CustomPrompt) ? config.CustomPrompt : null,
+                config.AutoCompleteApiUrl,
                 cancellationToken);
         }
         catch (OperationCanceledException)

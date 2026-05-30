@@ -38,6 +38,7 @@ public class MultiThreadedTranslationService : IDisposable
         string targetLang,
         int requestTimeoutSeconds,
         string? customPrompt = null,
+        bool autoCompleteApiUrl = true,
         CancellationToken cancellationToken = default)
     {
         if (_disposed)
@@ -62,6 +63,7 @@ public class MultiThreadedTranslationService : IDisposable
                 targetLang,
                 requestTimeoutSeconds,
                 customPrompt,
+                autoCompleteApiUrl,
                 () => Interlocked.Increment(ref processedBatches),
                 cancellationToken))
             .ToList();
@@ -84,6 +86,7 @@ public class MultiThreadedTranslationService : IDisposable
         string targetLang,
         int requestTimeoutSeconds,
         string? customPrompt,
+        bool autoCompleteApiUrl,
         Func<int> markBatchProcessed,
         CancellationToken cancellationToken)
     {
@@ -99,6 +102,7 @@ public class MultiThreadedTranslationService : IDisposable
             targetLang,
             requestTimeoutSeconds,
             customPrompt,
+            autoCompleteApiUrl,
             cancellationToken);
 
         var processed = markBatchProcessed();
@@ -124,6 +128,7 @@ public class MultiThreadedTranslationService : IDisposable
         string targetLang,
         int requestTimeoutSeconds,
         string? customPrompt,
+        bool autoCompleteApiUrl,
         CancellationToken cancellationToken)
     {
         try
@@ -143,6 +148,7 @@ public class MultiThreadedTranslationService : IDisposable
                     targetLang,
                     customPrompt,
                     requestTimeoutSeconds,
+                    autoCompleteApiUrl,
                     ct);
             }, cancellationToken);
 

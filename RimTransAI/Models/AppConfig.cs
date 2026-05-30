@@ -12,6 +12,7 @@ public class AppConfig
     public string AppTheme { get; set; } = "Light";
     public string AssemblyCSharpPath { get; set; } = ""; // Assembly-CSharp.dll 路径
     public bool DebugMode { get; set; } = false; // 调试模式开关
+    public bool AutoCompleteApiUrl { get; set; } = true; // 是否自动补全 /v1/chat/completions
 
     // 智能分批配置（高级用户可通过 settings.json 调整）
     public int MaxTokensPerBatch { get; set; } = 3000;  // 每批次最大 Token 数
