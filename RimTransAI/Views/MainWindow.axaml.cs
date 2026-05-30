@@ -1,5 +1,8 @@
 using System;
+using System.Threading.Tasks;
 using Avalonia.Controls;
+using Avalonia.Input;
+using Avalonia.Interactivity;
 using RimTransAI.Models;
 using RimTransAI.ViewModels;
 
@@ -13,19 +16,39 @@ public partial class MainWindow : Window
     }
 
     /// <summary>
-    /// 处理单元格编辑完成事件
+    /// 自定义标题栏拖拽
     /// </summary>
-    private void OnCellEditEnding(object? sender, DataGridCellEditEndingEventArgs e)
+    private void OnTitleBarPointerPressed(object? sender, Avalonia.Input.PointerPressedEventArgs e)
     {
-        // 仅处理译文列的编辑
-        if (e.Column.Header?.ToString() == "译文" && e.EditAction == DataGridEditAction.Commit)
-        {
-            // 获取当前编辑的行数据
-            if (e.Row.DataContext is TranslationItem item)
-            {
-                // 自动更新状态为"已翻译"
-                item.Status = "已翻译";
-            }
-        }
+        if (e.GetCurrentPoint(this).Properties.IsLeftButtonPressed)
+            BeginMoveDrag(e);
+    }
+
+    /// <summary>
+    /// 点击译文列编辑按钮，弹出编辑窗口。
+    /// </summary>
+    private async void OnEditTranslationClick(object? sender, RoutedEventArgs e)
+    {
+        if (sender is not Button button)
+            return;
+
+        if (button.Tag is not TranslationItem item)
+            return;
+
+        await TranslationEditWindow.ShowEditDialog(this, item);
+    }
+
+    /// <summary>
+    /// 双击译文文本，弹出编辑窗口。
+    /// </summary>
+    private async void OnEditTranslationDoubleTapped(object? sender, TappedEventArgs e)
+    {
+        if (sender is not Grid grid)
+            return;
+
+        if (grid.Tag is not TranslationItem item)
+            return;
+
+        await TranslationEditWindow.ShowEditDialog(this, item);
     }
 }

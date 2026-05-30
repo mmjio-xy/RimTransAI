@@ -5,62 +5,62 @@
         xmlns:converters="using:RimTransAI.Converters"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
-        xmlns:iconMaterial="clr-namespace:IconPacks.Avalonia.Material;assembly=IconPacks.Avalonia.Material"
+        xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
         mc:Ignorable="d" d:DesignWidth="1400" d:DesignHeight="700"
         x:Class="RimTransAI.Views.MainWindow"
         x:DataType="vm:MainWindowViewModel"
-        Title="RimTrans AI - 边缘世界智能汉化"
+        Title="RimTrans AI — 边缘世界智能汉化"
         Width="1400"
         Height="700"
         ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaTitleBarHeightHint="36"
         Icon="avares://RimTransAI/Assets/RimTrans.ico"
-        SystemDecorations="Full"
+        WindowDecorations="Full"
         Background="{DynamicResource SemiColorBackground0}">
 
     <Window.Resources>
         <converters:LogColorConverter x:Key="LogColorConverter"/>
         <converters:LogLineSplitterConverter x:Key="LogLineSplitterConverter"/>
+        <converters:BooleanInvertConverter x:Key="BooleanInvertConverter"/>
     </Window.Resources>
 
-    <Grid RowDefinitions="30,*,Auto">
-        <Grid Grid.Row="0" ColumnDefinitions="Auto,*" Margin="12,4,12,0">
-            <TextBlock Grid.Column="0"
-                       Text="{Binding AppDisplayTitle}"
-                       FontSize="12"
-                       FontWeight="SemiBold"
-                       VerticalAlignment="Center"
-                       Foreground="{DynamicResource SemiColorText2}"/>
+    <Grid RowDefinitions="36,*,Auto">
+        <Grid Grid.Row="0" ColumnDefinitions="Auto,*" Margin="12,4,12,0"
+              Background="{DynamicResource SemiColorBackground0}"
+              PointerPressed="OnTitleBarPointerPressed">
             <StackPanel Grid.Column="1"
                         Orientation="Horizontal"
                         Spacing="8"
                         HorizontalAlignment="Right"
-                        Margin="0,0,140,0">
+                        Margin="0,0,170,0">
                 <Button Command="{Binding OpenSettingsCommand}"
-                        Theme="{x:Null}"
-                        Width="20"
-                        Height="20"
+                        WindowDecorationProperties.ElementRole="User"
+                        Width="28"
+                        Height="28"
                         Padding="0"
                         Background="Transparent"
                         BorderBrush="Transparent"
                         BorderThickness="0"
                         ToolTip.Tip="程序设置">
-                    <iconMaterial:PackIconMaterial Kind="CogOutline"
-                                                   Width="16"
-                                                   Height="16"
+                    <materialIcons:MaterialIcon Kind="CogOutline"
+                                                   Width="18"
+                                                   Height="18"
+                                                   IsHitTestVisible="False"
                                                    Foreground="{DynamicResource SemiColorText2}"/>
                 </Button>
                 <Button Command="{Binding OpenBackupManagerCommand}"
-                        Theme="{x:Null}"
-                        Width="20"
-                        Height="20"
+                        WindowDecorationProperties.ElementRole="User"
+                        Width="28"
+                        Height="28"
                         Padding="0"
                         Background="Transparent"
                         BorderBrush="Transparent"
                         BorderThickness="0"
                         ToolTip.Tip="备份管理">
-                    <iconMaterial:PackIconMaterial Kind="ArchiveOutline"
-                                                   Width="16"
-                                                   Height="16"
+                    <materialIcons:MaterialIcon Kind="ArchiveOutline"
+                                                   Width="18"
+                                                   Height="18"
+                                                   IsHitTestVisible="False"
                                                    Foreground="{DynamicResource SemiColorText2}"/>
                 </Button>
             </StackPanel>
@@ -88,7 +88,7 @@
                 <Grid RowDefinitions="Auto,Auto,*">
                     <Grid ColumnDefinitions="*,Auto">
                         <StackPanel Orientation="Horizontal" Spacing="8">
-                            <iconMaterial:PackIconMaterial Kind="ViewList" Width="18" Height="18" Foreground="{DynamicResource SemiColorText1}"/>
+                            <materialIcons:MaterialIcon Kind="ViewList" Width="18" Height="18" Foreground="{DynamicResource SemiColorText1}"/>
                             <TextBlock Text="Mod 列表" Classes="H5" Theme="{DynamicResource TitleTextBlock}"/>
                         </StackPanel>
                         <Button Grid.Column="1"
@@ -101,7 +101,7 @@
                                 BorderBrush="Transparent"
                                 BorderThickness="0"
                                 ToolTip.Tip="刷新来源">
-                            <iconMaterial:PackIconMaterial Kind="Refresh" Width="16" Height="16" Foreground="{DynamicResource SemiColorText2}"/>
+                            <materialIcons:MaterialIcon Kind="Refresh" Width="16" Height="16" Foreground="{DynamicResource SemiColorText2}"/>
                         </Button>
                     </Grid>
 
@@ -112,7 +112,7 @@
                         </ComboBox>
                         <TextBox Grid.Column="1"
                                  Text="{Binding ModSearchText}"
-                                 Watermark="输入关键词搜索"
+                                 PlaceholderText="输入关键词搜索"
                                  Margin="8,0,0,0"
                                  HorizontalAlignment="Stretch"/>
                     </Grid>
@@ -124,7 +124,7 @@
                             <DataTemplate>
                                 <Border Padding="8" Margin="0,0,0,6" BorderBrush="{DynamicResource SemiColorBorder}" BorderThickness="1" CornerRadius="6">
                                     <Grid ColumnDefinitions="Auto,*,Auto">
-                                        <iconMaterial:PackIconMaterial Grid.Column="0"
+                                        <materialIcons:MaterialIcon Grid.Column="0"
                                                                        Kind="{Binding SourceIconKind}"
                                                                        Width="18"
                                                                        Height="18"
@@ -171,21 +171,21 @@
                         <Grid Grid.Column="1" ColumnDefinitions="Auto,5,Auto">
                             <Button Grid.Column="0" Width="128" Command="{Binding StartTranslationCommand}" IsVisible="{Binding !IsTranslating}" Theme="{DynamicResource SolidButton}" Classes="Success">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <iconMaterial:PackIconMaterial Kind="Play" Width="16" Height="16"/>
+                                    <materialIcons:MaterialIcon Kind="Play" Width="16" Height="16"/>
                                     <TextBlock Text="开始翻译"/>
                                 </StackPanel>
                             </Button>
 
                             <Button Grid.Column="0" Width="128" Command="{Binding StopTranslationCommand}" IsVisible="{Binding IsTranslating}" Theme="{DynamicResource SolidButton}" Classes="Danger">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <iconMaterial:PackIconMaterial Kind="Stop" Width="16" Height="16"/>
+                                    <materialIcons:MaterialIcon Kind="Stop" Width="16" Height="16"/>
                                     <TextBlock Text="停止翻译"/>
                                 </StackPanel>
                             </Button>
 
                             <Button Grid.Column="2" Width="128" Command="{Binding SaveFilesCommand}" Theme="{DynamicResource SolidButton}" Classes="Warning">
                                 <StackPanel Orientation="Horizontal" Spacing="6">
-                                    <iconMaterial:PackIconMaterial Kind="ContentSave" Width="16" Height="16"/>
+                                    <materialIcons:MaterialIcon Kind="ContentSave" Width="16" Height="16"/>
                                     <TextBlock Text="保存"/>
                                 </StackPanel>
                             </Button>
@@ -195,8 +195,8 @@
                     <StackPanel Grid.Row="1" Orientation="Horizontal" Spacing="10" VerticalAlignment="Center" Margin="0,10,0,10">
                         <Button Command="{Binding LoadOrRefreshTranslationItemsCommand}" Theme="{DynamicResource SolidButton}">
                             <StackPanel Orientation="Horizontal" Spacing="6">
-                                <iconMaterial:PackIconMaterial Kind="Download" Width="16" Height="16" IsVisible="{Binding !HasSelectedModCache}"/>
-                                <iconMaterial:PackIconMaterial Kind="Refresh" Width="16" Height="16" IsVisible="{Binding HasSelectedModCache}"/>
+                                <materialIcons:MaterialIcon Kind="Download" Width="16" Height="16" IsVisible="{Binding !HasSelectedModCache}"/>
+                                <materialIcons:MaterialIcon Kind="Refresh" Width="16" Height="16" IsVisible="{Binding HasSelectedModCache}"/>
                                 <TextBlock Text="{Binding LoadOrRefreshTranslationText}"/>
                             </StackPanel>
                         </Button>
@@ -207,20 +207,49 @@
                                   PlaceholderText="全部" />
                     </StackPanel>
 
-                    <DataGrid Grid.Row="2"
+                    <DataGrid x:Name="TranslationDataGrid"
+                              Grid.Row="2"
                               ItemsSource="{Binding TranslationItems}"
                               IsReadOnly="{Binding IsTranslationTableReadOnly}"
                               CanUserResizeColumns="True"
                               GridLinesVisibility="All"
                               BorderThickness="1"
                               BorderBrush="{DynamicResource SemiColorBorder}"
-                              Background="{DynamicResource SemiColorBackground0}"
-                              CellEditEnding="OnCellEditEnding">
+                              Background="{DynamicResource SemiColorBackground0}">
                         <DataGrid.Columns>
                             <DataGridTextColumn Header="版本" Binding="{Binding Version}" Width="90" IsReadOnly="True" />
                             <DataGridTextColumn Header="Key" Binding="{Binding Key}" Width="220" IsReadOnly="True" />
                             <DataGridTextColumn Header="原文" Binding="{Binding OriginalText}" Width="3*" IsReadOnly="True" />
-                            <DataGridTextColumn Header="译文" Binding="{Binding TranslatedText, Mode=TwoWay}" Width="3*" IsReadOnly="False" />
+                            <DataGridTemplateColumn Header="译文" Width="3*">
+                                <DataGridTemplateColumn.CellTemplate>
+                                    <DataTemplate>
+                                        <Grid ColumnDefinitions="*,Auto" Margin="2,0"
+                                              Tag="{Binding}"
+                                              DoubleTapped="OnEditTranslationDoubleTapped">
+                                            <TextBlock Grid.Column="0"
+                                                       Text="{Binding TranslatedText}"
+                                                       VerticalAlignment="Center"
+                                                       TextTrimming="CharacterEllipsis"
+                                                       Margin="0,0,4,0"/>
+                                            <Button Grid.Column="1"
+                                                    Width="24" Height="24"
+                                                    Padding="0"
+                                                    Background="Transparent"
+                                                    BorderBrush="Transparent"
+                                                    BorderThickness="0"
+                                                    ToolTip.Tip="点击编辑译文"
+                                                    IsVisible="{Binding IsReadOnly, ElementName=TranslationDataGrid, Converter={StaticResource BooleanInvertConverter}}"
+                                                    Click="OnEditTranslationClick"
+                                                    Tag="{Binding}">
+                                                <materialIcons:MaterialIcon Kind="PencilOutline"
+                                                                               Width="14" Height="14"
+                                                                               IsHitTestVisible="False"
+                                                                               Foreground="{DynamicResource SemiColorText2}"/>
+                                            </Button>
+                                        </Grid>
+                                    </DataTemplate>
+                                </DataGridTemplateColumn.CellTemplate>
+                            </DataGridTemplateColumn>
                             <DataGridTextColumn Header="状态" Binding="{Binding Status}" Width="100" IsReadOnly="True" />
                         </DataGrid.Columns>
                     </DataGrid>

@@ -1,4 +1,4 @@
-using IconPacks.Avalonia.Material;
+using Material.Icons;
 
 namespace RimTransAI.Models;
 
@@ -9,5 +9,5 @@ public sealed class SourceIconOption
 {
     public required string Key { get; init; }
     public required string Label { get; init; }
-    public required PackIconMaterialKind Kind { get; init; }
+    public required MaterialIconKind Kind { get; init; }
 }

@@ -1,7 +1,7 @@
 using System;
 using System.Text.Json.Serialization;
 using CommunityToolkit.Mvvm.ComponentModel;
-using IconPacks.Avalonia.Material;
+using Material.Icons;
 
 namespace RimTransAI.Models;
 
@@ -35,7 +35,7 @@ public partial class ModSourceFolder : ObservableObject
     }
 
     /// <summary>
-    /// IconPacks Material 图标键名（例如 Folder, RocketLaunch）。
+    /// 图标键名（例如 Folder, RocketLaunch）。
     /// </summary>
     public string IconKey
     {
@@ -56,17 +56,17 @@ public partial class ModSourceFolder : ObservableObject
     }
 
     [JsonIgnore]
-    public PackIconMaterialKind IconKind
+    public MaterialIconKind IconKind
     {
         get
         {
             if (!string.IsNullOrWhiteSpace(IconKey)
-                && Enum.TryParse(IconKey, true, out PackIconMaterialKind parsed))
+                && Enum.TryParse(IconKey, true, out MaterialIconKind parsed))
             {
                 return parsed;
             }
 
-            return PackIconMaterialKind.Folder;
+            return MaterialIconKind.Folder;
         }
     }
 

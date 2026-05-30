@@ -26,6 +26,7 @@ public partial class SettingsViewModel : ViewModelBase
     [ObservableProperty] private int _selectedThemeIndex;
     [ObservableProperty] private string _targetModel = string.Empty;
     [ObservableProperty] private bool _debugMode;
+    [ObservableProperty] private bool _autoCompleteApiUrl = true;
     [ObservableProperty] private bool _useCustomPrompt;
     [ObservableProperty] private string _customPrompt = string.Empty;
     [ObservableProperty] private int _selectedTemplateIndex;
@@ -120,6 +121,7 @@ public partial class SettingsViewModel : ViewModelBase
         SelectedLanguageIndex = cfg.TargetLanguage == "ChineseTraditional" ? 1 : 0;
         SelectedThemeIndex = cfg.AppTheme == "Dark" ? 1 : 0;
         DebugMode = cfg.DebugMode;
+        AutoCompleteApiUrl = cfg.AutoCompleteApiUrl;
         UseCustomPrompt = cfg.UseCustomPrompt;
         CustomPrompt = cfg.CustomPrompt;
 
@@ -277,6 +279,7 @@ public partial class SettingsViewModel : ViewModelBase
             AppTheme = newTheme,
             AssemblyCSharpPath = AssemblyCSharpPath,
             DebugMode = DebugMode,
+            AutoCompleteApiUrl = AutoCompleteApiUrl,
             CustomPrompt = CustomPrompt,
             UseCustomPrompt = UseCustomPrompt,
             PromptTemplateName = templateName,

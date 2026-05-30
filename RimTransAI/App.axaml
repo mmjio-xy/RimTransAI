@@ -1,11 +1,12 @@
 <Application xmlns="https://github.com/avaloniaui"
              xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+             xmlns:semi="https://irihi.tech/semi"
+             xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
              x:Class="RimTransAI.App"
              RequestedThemeVariant="Light">
     <Application.Styles>
-        <StyleInclude Source="avares://Semi.Avalonia/Themes/Index.axaml" />
+        <semi:SemiTheme />
         <StyleInclude Source="avares://Semi.Avalonia.DataGrid/Index.axaml" />
-        <StyleInclude Source="avares://IconPacks.Avalonia.Core/PackIcon.axaml" />
-        <StyleInclude Source="avares://IconPacks.Avalonia.Material/Material.axaml" />
+        <materialIcons:MaterialIconStyles />
     </Application.Styles>
 </Application>

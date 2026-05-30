@@ -3,7 +3,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="using:RimTransAI.ViewModels"
-        xmlns:iconMaterial="clr-namespace:IconPacks.Avalonia.Material;assembly=IconPacks.Avalonia.Material"
+        xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
         mc:Ignorable="d" d:DesignWidth="500" d:DesignHeight="300"
         x:Class="RimTransAI.Views.ConfirmRestoreDialog"
         x:DataType="vm:ConfirmRestoreDialogViewModel"
@@ -12,7 +12,7 @@
         Height="300"
         WindowStartupLocation="CenterOwner"
         CanResize="False"
-        SystemDecorations="Full"
+        WindowDecorations="Full"
         Background="{DynamicResource SemiColorBackground0}">
 
     <Grid RowDefinitions="Auto, *, Auto" Margin="0">
@@ -35,7 +35,7 @@
                         Padding="15">
                     <StackPanel Spacing="8">
                         <StackPanel Orientation="Horizontal" Spacing="8">
-                            <iconMaterial:PackIconMaterial Kind="AlertOutline"
+                            <materialIcons:MaterialIcon Kind="AlertOutline"
                                                            Width="20" Height="20"
                                                            Foreground="{DynamicResource SemiColorWarning}"
                                                            VerticalAlignment="Center"/>

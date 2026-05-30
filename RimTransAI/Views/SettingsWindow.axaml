@@ -3,7 +3,7 @@
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
         xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
         xmlns:vm="using:RimTransAI.ViewModels"
-        xmlns:iconMaterial="clr-namespace:IconPacks.Avalonia.Material;assembly=IconPacks.Avalonia.Material"
+        xmlns:materialIcons="clr-namespace:Material.Icons.Avalonia;assembly=Material.Icons.Avalonia"
         mc:Ignorable="d" d:DesignWidth="520" d:DesignHeight="500"
         x:Class="RimTransAI.Views.SettingsWindow"
         x:DataType="vm:SettingsViewModel"
@@ -14,8 +14,9 @@
         CanResize="True"
         MinWidth="620"
         MinHeight="480"
-        SystemDecorations="Full"
+        WindowDecorations="Full"
         ExtendClientAreaToDecorationsHint="True"
+        ExtendClientAreaTitleBarHeightHint="30"
         Background="{DynamicResource SemiColorBackground0}">
 
     <Grid RowDefinitions="Auto, *, Auto" Margin="0,30,0,0">
@@ -73,7 +74,7 @@
                             <Grid ColumnDefinitions="*, Auto">
                                 <TextBox Grid.Column="0"
                                          Text="{Binding AssemblyCSharpPath}"
-                                         Watermark="选择 Assembly-CSharp.dll 文件路径"
+                                         PlaceholderText="选择 Assembly-CSharp.dll 文件路径"
                                          IsReadOnly="True"
                                          Margin="0,0,10,0"/>
                                 <Button Grid.Column="1"
@@ -107,7 +108,7 @@
             <TabItem>
                 <TabItem.Header>
                     <StackPanel Orientation="Horizontal" Spacing="6">
-                        <iconMaterial:PackIconMaterial Kind="FolderMultipleOutline"
+                        <materialIcons:MaterialIcon Kind="FolderMultipleOutline"
                                                        Width="16"
                                                        Height="16"
                                                        Foreground="{DynamicResource SemiColorText0}"
@@ -148,7 +149,7 @@
                                     </DataGridTemplateColumn.Header>
                                     <DataGridTemplateColumn.CellTemplate>
                                         <DataTemplate>
-                                            <iconMaterial:PackIconMaterial Kind="{Binding IconKind}"
+                                            <materialIcons:MaterialIcon Kind="{Binding IconKind}"
                                                                            Width="16"
                                                                            Height="16"
                                                                            Foreground="{DynamicResource SemiColorPrimary}"
@@ -285,9 +286,22 @@
                                 <TextBlock Text="API 地址 (Base URL)" Classes="Tertiary"/>
                                 <TextBlock Text=" *" Foreground="#E53935" FontWeight="Bold"/>
                             </StackPanel>
-                            <TextBox Text="{Binding ApiUrl}" Watermark="例如: https://api.openai.com"/>
-                            <TextBlock Text="提示: 只需填写 Base URL，程序会自动补全 /v1/chat/completions"
-                                       FontSize="12" Foreground="{DynamicResource SemiColorText3}"/>
+                            <TextBox Text="{Binding ApiUrl}" PlaceholderText="例如: https://api.openai.com"/>
+                            <!-- 自动补全开关 -->
+                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
+                                <ToggleSwitch Grid.Column="0"
+                                              IsChecked="{Binding AutoCompleteApiUrl}"
+                                              VerticalAlignment="Center"/>
+                                <TextBlock Grid.Column="1"
+                                           VerticalAlignment="Center"
+                                           FontSize="12"
+                                           Foreground="{DynamicResource SemiColorText3}"
+                                           Text="自动补全 /v1/chat/completions 路径"/>
+                            </Grid>
+                            <TextBlock Text="开启：填写域名即可，程序自动拼接完整路径。&#10;关闭：直接使用您填写的地址，不做任何拼接（适用于自定义代理等非标准路径）。"
+                                       FontSize="11"
+                                       Foreground="{DynamicResource SemiColorText2}"
+                                       TextWrapping="Wrap"/>
                         </StackPanel>
 
                         <!-- API Key（必填） -->
@@ -296,7 +310,7 @@
                                 <TextBlock Text="API Key (令牌)" Classes="Tertiary"/>
                                 <TextBlock Text=" *" Foreground="#E53935" FontWeight="Bold"/>
                             </StackPanel>
-                            <TextBox Text="{Binding ApiKey}" PasswordChar="*" Watermark="sk-..." Classes="RevealPasswordButton"/>
+                            <TextBox Text="{Binding ApiKey}" PasswordChar="*" PlaceholderText="sk-..." Classes="RevealPasswordButton"/>
                         </StackPanel>
 
                         <!-- 模型名称（必填） -->
@@ -305,7 +319,7 @@
                                 <TextBlock Text="模型名称 (Model)" Classes="Tertiary"/>
                                 <TextBlock Text=" *" Foreground="#E53935" FontWeight="Bold"/>
                             </StackPanel>
-                            <TextBox Text="{Binding TargetModel}" Watermark="例如: gpt-3.5-turbo / deepseek-chat"/>
+                            <TextBox Text="{Binding TargetModel}" PlaceholderText="例如: gpt-3.5-turbo / deepseek-chat"/>
                         </StackPanel>
 
                         <!-- 单次请求超时 -->
@@ -354,7 +368,7 @@
                                              AcceptsReturn="True"
                                              TextWrapping="Wrap"
                                              Height="120"
-                                             Watermark="请输入自定义提示词...&#10;示例：&#10;You are a professional translator for RimWorld.&#10;Target language: {targetLang}.&#10;Rules: ..."/>
+                                             PlaceholderText="请输入自定义提示词...&#10;示例：&#10;You are a professional translator for RimWorld.&#10;Target language: {targetLang}.&#10;Rules: ..."/>
 
                                     <!-- 预设模板下拉框 -->
                                     <StackPanel Orientation="Horizontal" Spacing="8">
@@ -430,7 +444,7 @@
                             <Grid ColumnDefinitions="*, Auto">
                                 <TextBox Grid.Column="0"
                                          Text="{Binding BackupDirectory}"
-                                         Watermark="留空则使用: %AppData%/RimTransAI/Backups"
+                                         PlaceholderText="留空则使用: %AppData%/RimTransAI/Backups"
                                          Margin="0,0,10,0"/>
                                 <Button Grid.Column="1"
                                         Content="浏览..."

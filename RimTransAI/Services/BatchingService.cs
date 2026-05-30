@@ -86,6 +86,7 @@ public class BatchingService
         // 处理普通文本：按 Token 数智能分批
         CreateNormalBatches(normalGroups, safeTokenLimit, minItemsPerBatch, maxItemsPerBatch, result);
 
+        Logger.Debug($"分批完成: {result.TotalBatches} 批次 | 超大: {result.OversizedBatches} | 总Token: {result.BatchTokenCounts.Sum()} | token限制: {safeTokenLimit}");
         return result;
     }
 
