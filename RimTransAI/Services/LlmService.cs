@@ -4,6 +4,8 @@ using System.ClientModel;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using OpenAI;
 using OpenAI.Chat;
 
@@ -18,6 +20,17 @@ public class LlmService : IDisposable
     private string? _cachedApiKey;
     private Uri? _cachedEndpoint;
     private string? _cachedModel;
+    private readonly ILogger<LlmService> _logger;
+
+    public LlmService()
+        : this(NullLogger<LlmService>.Instance)
+    {
+    }
+
+    public LlmService(ILogger<LlmService> logger)
+    {
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
+    }
 
     /// <summary>
     /// 批量翻译
@@ -48,7 +61,12 @@ public class LlmService : IDisposable
         var endpoint = BuildEndpoint(apiUrl, autoCompleteApiUrl);
         var timeoutSeconds = Math.Clamp(requestTimeoutSeconds, 30, 1800);
 
-        Logger.Debug($"LLM 请求 — Endpoint: {endpoint} | 模型: {model} | 条目数: {sourceTexts.Count} | 超时: {timeoutSeconds}s");
+        _logger.LogDebug(
+            "LLM 请求 Endpoint={Endpoint} Model={Model} ItemCount={ItemCount} TimeoutSeconds={TimeoutSeconds}",
+            endpoint,
+            model,
+            sourceTexts.Count,
+            timeoutSeconds);
 
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
@@ -81,11 +99,14 @@ public class LlmService : IDisposable
 
             if (string.IsNullOrEmpty(content))
             {
-                Logger.Warning("LLM 返回空 content");
+                _logger.LogWarning("LLM 返回空响应");
                 throw new InvalidOperationException("LLM 返回了空响应");
             }
 
-            Logger.Debug($"LLM 响应完成 — 模型: {completion.Value.Model} | Tokens: {completion.Value.Usage?.TotalTokenCount}");
+            _logger.LogDebug(
+                "LLM 响应完成 Model={Model} TotalTokens={TotalTokens}",
+                completion.Value.Model,
+                completion.Value.Usage?.TotalTokenCount);
 
             // 清理可能的 markdown 代码块标记
             content = content.Trim();
@@ -105,22 +126,25 @@ public class LlmService : IDisposable
                 throw new InvalidOperationException("LLM 未返回任何翻译结果");
             }
 
-            Logger.Debug($"LLM 翻译结果: {result.Count}/{sourceTexts.Count} 条成功");
+            _logger.LogDebug(
+                "LLM 翻译结果 ParsedCount={ParsedCount} RequestedCount={RequestedCount}",
+                result.Count,
+                sourceTexts.Count);
             return result;
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && timeoutCts.IsCancellationRequested)
         {
-            Logger.Warning($"LLM 请求超时（{timeoutSeconds} 秒）");
+            _logger.LogWarning("LLM 请求超时 TimeoutSeconds={TimeoutSeconds}", timeoutSeconds);
             throw new TimeoutException($"API 请求超时（{timeoutSeconds} 秒）");
         }
         catch (OperationCanceledException)
         {
-            Logger.Debug("LLM 请求已取消");
+            _logger.LogDebug("LLM 请求已取消");
             throw;
         }
         catch (Exception ex)
         {
-            Logger.Error($"LLM 翻译失败: {ex.GetType().Name} - {ex.Message}");
+            _logger.LogError(ex, "LLM 翻译失败");
             throw;
         }
     }

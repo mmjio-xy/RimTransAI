@@ -1,6 +1,7 @@
 using FluentAssertions;
 using RimTransAI.Models;
 using RimTransAI.Services;
+using RimTransAI.Tests.Helpers;
 using Xunit;
 
 namespace RimTransAI.Tests.Services;
@@ -23,15 +24,19 @@ public class MultiThreadedTranslationServiceTests
             return Task.FromResult(sourceTexts.ToDictionary(x => x.Key, _ => "翻译成功"));
         });
         var dispatchedUpdates = 0;
+        var logger = new RecordingLogger<MultiThreadedTranslationService>();
 
         using var concurrencyManager = new ConcurrencyManager(2);
         using var progressReporter = new ThreadSafeProgressReporter();
-        using var service = new MultiThreadedTranslationService(llmService, update =>
-        {
-            Interlocked.Increment(ref dispatchedUpdates);
-            update();
-            return Task.CompletedTask;
-        });
+        using var service = new MultiThreadedTranslationService(
+            llmService,
+            update =>
+            {
+                Interlocked.Increment(ref dispatchedUpdates);
+                update();
+                return Task.CompletedTask;
+            },
+            logger);
 
         var successfulBatches = await service.ExecuteBatchesAsync(
             batchResult,
@@ -49,6 +54,11 @@ public class MultiThreadedTranslationServiceTests
         failedItem.Status.Should().Be("翻译失败");
         failedItem.TranslatedText.Should().BeEmpty();
         dispatchedUpdates.Should().Be(2);
+        logger.Records.Any(record =>
+                record.Exception is InvalidOperationException &&
+                record.Properties.TryGetValue("BatchIndex", out var batchIndex) &&
+                Equals(batchIndex, 2))
+            .Should().BeTrue();
     }
 
     [Fact]

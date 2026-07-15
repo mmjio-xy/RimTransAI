@@ -29,7 +29,7 @@ public static class Logger
     private const int RetainedFileCountLimit = 14;
     private const int AsyncBufferSize = 8192;
     private const string OutputTemplate =
-        "[{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz}] [{Level:u3}] [{SourceContext}] {Message:lj}{NewLine}{Exception}";
+        "[{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz}] [{Level:u3}] [{SourceContext}] {Message:lj} {Properties:j}{NewLine}{Exception}";
 
     private static readonly object InitializationLock = new();
     private static readonly LoggingLevelSwitch LevelSwitch = new(LogEventLevel.Information);

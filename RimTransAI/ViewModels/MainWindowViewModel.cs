@@ -10,6 +10,8 @@ using Avalonia.Threading;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using RimTransAI.Models;
 using RimTransAI.Services;
 using RimTransAI.Views;
@@ -18,6 +20,7 @@ namespace RimTransAI.ViewModels;
 
 public partial class MainWindowViewModel : ViewModelBase
 {
+    private const string InitialLogMessage = "就绪。请先在设置页配置 Mod 来源目录。";
     private readonly ConfigService _configService;
     private readonly FileGeneratorService _fileGeneratorService;
     private readonly LlmService _llmService;
@@ -26,6 +29,8 @@ public partial class MainWindowViewModel : ViewModelBase
     private readonly ModInfoService _modInfoService;
     private readonly BackupService _backupService;
     private readonly WorkspaceService _workspaceService;
+    private readonly ILoggerFactory _loggerFactory;
+    private readonly ILogger<MainWindowViewModel> _logger;
 
     private readonly Dictionary<string, List<TranslationItem>> _modItemsCache = new(StringComparer.OrdinalIgnoreCase);
     private readonly List<WorkspaceModItem> _allWorkspaceMods = [];
@@ -35,10 +40,12 @@ public partial class MainWindowViewModel : ViewModelBase
     private string? _currentPackageId;
     private string? _currentModName;
     private CancellationTokenSource? _translationCts;
+    private readonly OperationLogBuffer _operationLogBuffer = new(capacity: 500);
+    private string _lastObservedLogOutput = InitialLogMessage;
 
     [ObservableProperty] private bool _isTranslating;
-    [ObservableProperty] private string _logOutput = "就绪。请先在设置页配置 Mod 来源目录。";
-    [ObservableProperty] private string _latestLogLine = "就绪。请先在设置页配置 Mod 来源目录。";
+    [ObservableProperty] private string _logOutput = InitialLogMessage;
+    [ObservableProperty] private string _latestLogLine = InitialLogMessage;
     [ObservableProperty] private string _selectedVersion = "全部";
     [ObservableProperty] private ModInfoViewModel? _modInfoViewModel;
     [ObservableProperty] private WorkspaceModItem? _selectedMod;
@@ -51,6 +58,7 @@ public partial class MainWindowViewModel : ViewModelBase
     public ObservableCollection<TranslationItem> TranslationItems { get; } = new();
     public ObservableCollection<string> AvailableVersions { get; } = new();
     public ObservableCollection<WorkspaceModItem> WorkspaceMods { get; } = new();
+    public ReadOnlyObservableCollection<OperationLogEntry> OperationLogs => _operationLogBuffer.Entries;
     public string AppDisplayTitle { get; } = BuildAppDisplayTitle();
 
     private static string BuildAppDisplayTitle()
@@ -61,13 +69,28 @@ public partial class MainWindowViewModel : ViewModelBase
 
     partial void OnLogOutputChanged(string value)
     {
-        var lines = value
-            .Split(['\r', '\n'], StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
-        LatestLogLine = lines.Length > 0 ? lines[^1] : string.Empty;
+        var isAppend = value.Length > _lastObservedLogOutput.Length &&
+                       value.StartsWith(_lastObservedLogOutput, StringComparison.Ordinal) &&
+                       (value[_lastObservedLogOutput.Length] == '\r' ||
+                        value[_lastObservedLogOutput.Length] == '\n');
+
+        if (isAppend)
+        {
+            _operationLogBuffer.Append(value[_lastObservedLogOutput.Length..]);
+        }
+        else
+        {
+            _operationLogBuffer.Replace(value);
+        }
+
+        _lastObservedLogOutput = value;
+        LatestLogLine = _operationLogBuffer.LatestMessage;
     }
 
     public MainWindowViewModel()
     {
+        _loggerFactory = NullLoggerFactory.Instance;
+        _logger = NullLogger<MainWindowViewModel>.Instance;
         var reflectionAnalyzer = new ReflectionAnalyzer();
         _configService = new ConfigService();
         _modParserService = new ModParserService(reflectionAnalyzer, _configService);
@@ -90,7 +113,8 @@ public partial class MainWindowViewModel : ViewModelBase
         BatchingService batchingService,
         ModInfoService modInfoService,
         BackupService backupService,
-        WorkspaceService workspaceService)
+        WorkspaceService workspaceService,
+        ILoggerFactory loggerFactory)
     {
         _modParserService = modParserService;
         _llmService = llmService;
@@ -100,6 +124,8 @@ public partial class MainWindowViewModel : ViewModelBase
         _modInfoService = modInfoService;
         _backupService = backupService;
         _workspaceService = workspaceService;
+        _loggerFactory = loggerFactory ?? throw new ArgumentNullException(nameof(loggerFactory));
+        _logger = _loggerFactory.CreateLogger<MainWindowViewModel>();
 
         InitializeCollections();
         LoadWorkspaceFromConfig();
@@ -107,6 +133,7 @@ public partial class MainWindowViewModel : ViewModelBase
 
     private void InitializeCollections()
     {
+        _operationLogBuffer.Replace(LogOutput);
         AvailableVersions.Clear();
         AvailableVersions.Add("全部");
         SelectedVersion = "全部";
@@ -490,6 +517,15 @@ public partial class MainWindowViewModel : ViewModelBase
             return;
         }
 
+        var operationId = Guid.NewGuid().ToString("N");
+        using var translationScope = _logger.BeginScope(new Dictionary<string, object>
+        {
+            ["OperationId"] = operationId,
+            ["OperationType"] = "Translation",
+            ["ModName"] = SelectedMod.Name,
+            ["Model"] = config.TargetModel
+        });
+
         IsTranslating = true;
 
         _translationCts?.Dispose();
@@ -507,7 +543,10 @@ public partial class MainWindowViewModel : ViewModelBase
         int processedGroups = 0;
         int successfulBatches = 0;
 
-        Logger.Info($"开始翻译: {SelectedMod.Name} | 条目: {totalItems} | 去重: {totalGroups} | 模型: {config.TargetModel}");
+        _logger.LogInformation(
+            "开始翻译 ItemCount={ItemCount} DistinctTextCount={DistinctTextCount}",
+            totalItems,
+            totalGroups);
 
         var batchResult = _batchingService.CreateBatches(
             distinctGroups,
@@ -519,7 +558,11 @@ public partial class MainWindowViewModel : ViewModelBase
         var batches = batchResult.Batches;
         int totalBatches = batchResult.TotalBatches;
 
-        Logger.Debug($"分批结果: {totalBatches} 批次 | 超大: {batchResult.OversizedBatches} | API: {config.ApiUrl}");
+        _logger.LogDebug(
+            "翻译分批完成 TotalBatches={TotalBatches} OversizedBatches={OversizedBatches} ApiUrl={ApiUrl}",
+            totalBatches,
+            batchResult.OversizedBatches,
+            config.ApiUrl);
         LogOutput = $"开始翻译：{SelectedMod.Name} 共 {totalItems} 条，去重后 {totalGroups} 条文本。";
         LogOutput += $"\n模型: {config.TargetModel} | 目标: {config.TargetLanguage}";
         LogOutput += $"\n智能分批: {totalBatches} 批次";
@@ -596,7 +639,11 @@ public partial class MainWindowViewModel : ViewModelBase
                     }
                     catch (Exception ex)
                     {
-                        Logger.Error($"单线程批次 {i + 1}/{totalBatches} 失败 | {ex.GetType().Name}: {ex.Message}");
+                        _logger.LogError(
+                            ex,
+                            "单线程翻译批次失败 BatchIndex={BatchIndex} TotalBatches={TotalBatches}",
+                            i + 1,
+                            totalBatches);
                         LogOutput += $"\n批次 {i + 1} 失败: {ex.Message}";
                         foreach (var group in batch)
                         {
@@ -614,16 +661,24 @@ public partial class MainWindowViewModel : ViewModelBase
                 LogOutput += successfulBatches == totalBatches
                     ? "\n翻译任务全部完成！"
                     : $"\n翻译结束：成功 {successfulBatches}/{totalBatches} 批次，其余批次失败。";
+
+                _logger.LogInformation(
+                    "翻译结束 SuccessfulBatches={SuccessfulBatches} TotalBatches={TotalBatches}",
+                    successfulBatches,
+                    totalBatches);
             }
         }
         catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
         {
-            Logger.Info("翻译已由用户取消");
+            _logger.LogInformation(
+                "翻译已由用户取消 SuccessfulBatches={SuccessfulBatches} TotalBatches={TotalBatches}",
+                successfulBatches,
+                totalBatches);
             LogOutput += "\n翻译已取消。";
         }
         catch (Exception ex)
         {
-            Logger.Error($"翻译过程致命错误: {ex.GetType().Name} — {ex.Message}", ex);
+            _logger.LogError(ex, "翻译过程发生致命错误");
             LogOutput += $"\n发生致命错误: {ex.Message}";
         }
         finally
@@ -652,7 +707,8 @@ public partial class MainWindowViewModel : ViewModelBase
     {
         using var concurrencyManager = new ConcurrencyManager(
             config.MaxThreads,
-            config.ThreadIntervalMs);
+            config.ThreadIntervalMs,
+            _loggerFactory.CreateLogger<ConcurrencyManager>());
 
         using var progressReporter = new ThreadSafeProgressReporter(
             UpdateMultiThreadProgress,
@@ -660,7 +716,8 @@ public partial class MainWindowViewModel : ViewModelBase
 
         using var multiThreadService = new MultiThreadedTranslationService(
             _llmService,
-            RunOnUiThreadAsync);
+            RunOnUiThreadAsync,
+            _loggerFactory.CreateLogger<MultiThreadedTranslationService>());
 
         progressReporter.ReportLog($"开始多线程翻译: {config.MaxThreads} 线程, {totalBatches} 批次");
 
@@ -704,9 +761,8 @@ public partial class MainWindowViewModel : ViewModelBase
 
         RunOnUiThread(() =>
         {
-            LogOutput = string.IsNullOrWhiteSpace(LogOutput)
-                ? message
-                : $"{LogOutput}\n{message}";
+            _operationLogBuffer.Append(message);
+            LatestLogLine = _operationLogBuffer.LatestMessage;
         });
     }
 
@@ -813,7 +869,7 @@ public partial class MainWindowViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            Logger.Warning($"加载 Mod 信息失败: {ex.Message}");
+            _logger.LogWarning(ex, "加载 Mod 信息失败 ModFolderPath={ModFolderPath}", modFolderPath);
             ModInfoViewModel = null;
         }
     }

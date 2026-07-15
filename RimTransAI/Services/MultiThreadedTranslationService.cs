@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using RimTransAI.Models;
 
 namespace RimTransAI.Services;
@@ -15,10 +17,15 @@ public class MultiThreadedTranslationService : IDisposable
     private readonly LlmService _llmService;
     private readonly bool _ownsLlmService;
     private readonly Func<Action, Task> _applyItemUpdatesAsync;
+    private readonly ILogger<MultiThreadedTranslationService> _logger;
     private bool _disposed;
 
     public MultiThreadedTranslationService()
-        : this(new LlmService(), ownsLlmService: true, ApplyUpdatesInlineAsync)
+        : this(
+            new LlmService(),
+            ownsLlmService: true,
+            ApplyUpdatesInlineAsync,
+            NullLogger<MultiThreadedTranslationService>.Instance)
     {
     }
 
@@ -26,7 +33,11 @@ public class MultiThreadedTranslationService : IDisposable
     /// 使用外部提供的 LLM 服务。外部服务的生命周期仍由调用方管理。
     /// </summary>
     public MultiThreadedTranslationService(LlmService llmService)
-        : this(llmService, ownsLlmService: false, ApplyUpdatesInlineAsync)
+        : this(
+            llmService,
+            ownsLlmService: false,
+            ApplyUpdatesInlineAsync,
+            NullLogger<MultiThreadedTranslationService>.Instance)
     {
     }
 
@@ -35,20 +46,27 @@ public class MultiThreadedTranslationService : IDisposable
     /// </summary>
     public MultiThreadedTranslationService(
         LlmService llmService,
-        Func<Action, Task> applyItemUpdatesAsync)
-        : this(llmService, ownsLlmService: false, applyItemUpdatesAsync)
+        Func<Action, Task> applyItemUpdatesAsync,
+        ILogger<MultiThreadedTranslationService>? logger = null)
+        : this(
+            llmService,
+            ownsLlmService: false,
+            applyItemUpdatesAsync,
+            logger ?? NullLogger<MultiThreadedTranslationService>.Instance)
     {
     }
 
     private MultiThreadedTranslationService(
         LlmService llmService,
         bool ownsLlmService,
-        Func<Action, Task> applyItemUpdatesAsync)
+        Func<Action, Task> applyItemUpdatesAsync,
+        ILogger<MultiThreadedTranslationService> logger)
     {
         _llmService = llmService ?? throw new ArgumentNullException(nameof(llmService));
         _ownsLlmService = ownsLlmService;
         _applyItemUpdatesAsync = applyItemUpdatesAsync
             ?? throw new ArgumentNullException(nameof(applyItemUpdatesAsync));
+        _logger = logger ?? throw new ArgumentNullException(nameof(logger));
     }
 
     private static Task ApplyUpdatesInlineAsync(Action update)
@@ -202,11 +220,18 @@ public class MultiThreadedTranslationService : IDisposable
         try
         {
             // 使用并发控制器执行翻译
-            Logger.Debug($"多线程批次 {batchIndex}/{totalBatches} — 等待并发槽 (翻译组: {batch.Count})");
+            _logger.LogDebug(
+                "翻译批次等待并发槽 BatchIndex={BatchIndex} TotalBatches={TotalBatches} GroupCount={GroupCount}",
+                batchIndex,
+                totalBatches,
+                batch.Count);
             var translations = await concurrencyManager.ExecuteAsync(async ct =>
             {
                 // 进入受控并发区后再记“开始”，避免日志看起来所有批次同时启动。
-                Logger.Debug($"多线程批次 {batchIndex}/{totalBatches} — 开始发送请求");
+                _logger.LogDebug(
+                    "翻译批次开始请求 BatchIndex={BatchIndex} TotalBatches={TotalBatches}",
+                    batchIndex,
+                    totalBatches);
                 progressReporter.ReportLog($"开始处理批次 {batchIndex}/{totalBatches}，包含 {batch.Count} 个翻译组");
                 return await _llmService.TranslateBatchAsync(
                     apiKey,
@@ -222,7 +247,11 @@ public class MultiThreadedTranslationService : IDisposable
 
             // 应用翻译结果
             await _applyItemUpdatesAsync(() => ApplyTranslations(batch, translations));
-            Logger.Debug($"多线程批次 {batchIndex}/{totalBatches} — 结果已应用 ({translations.Count} 条)");
+            _logger.LogDebug(
+                "翻译批次结果已应用 BatchIndex={BatchIndex} TotalBatches={TotalBatches} TranslationCount={TranslationCount}",
+                batchIndex,
+                totalBatches,
+                translations.Count);
 
             // 报告批次完成
             progressReporter.ReportLog($"✓ 批次 {batchIndex}/{totalBatches} 完成，翻译 {batch.Count} 个文本");
@@ -230,7 +259,10 @@ public class MultiThreadedTranslationService : IDisposable
         }
         catch (OperationCanceledException)
         {
-            Logger.Debug($"多线程批次 {batchIndex}/{totalBatches} — 已取消");
+            _logger.LogDebug(
+                "翻译批次已取消 BatchIndex={BatchIndex} TotalBatches={TotalBatches}",
+                batchIndex,
+                totalBatches);
             progressReporter.ReportLog($"✗ 批次 {batchIndex}/{totalBatches} 已取消");
             throw; // 重新抛出以取消其他任务
         }
@@ -238,7 +270,11 @@ public class MultiThreadedTranslationService : IDisposable
         {
             // 批次级错误处理 - 不影响其他批次
             progressReporter.ReportLog($"✗ 批次 {batchIndex}/{totalBatches} 失败: {ex.Message}");
-            Logger.Error($"多线程批次 {batchIndex}/{totalBatches} 翻译失败", ex);
+            _logger.LogError(
+                ex,
+                "翻译批次失败 BatchIndex={BatchIndex} TotalBatches={TotalBatches}",
+                batchIndex,
+                totalBatches);
 
             // 标记批次中的所有项为失败
             await _applyItemUpdatesAsync(() =>

@@ -1,5 +1,6 @@
 using FluentAssertions;
 using RimTransAI.Services;
+using RimTransAI.Tests.Helpers;
 using Xunit;
 
 namespace RimTransAI.Tests.Services;
@@ -9,7 +10,8 @@ public class LlmServiceTests
     [Fact]
     public async Task TranslateBatchAsync_WithCancelledToken_PropagatesCancellation()
     {
-        using var service = new LlmService();
+        var logger = new RecordingLogger<LlmService>();
+        using var service = new LlmService(logger);
         using var cts = new CancellationTokenSource();
         cts.Cancel();
 
@@ -21,6 +23,12 @@ public class LlmServiceTests
             cancellationToken: cts.Token);
 
         await operation.Should().ThrowAsync<OperationCanceledException>();
+        logger.Records.Any(record => record.Message == "LLM 请求已取消")
+            .Should().BeTrue();
+        logger.Records.Any(record =>
+                record.Properties.TryGetValue("Model", out var model) &&
+                Equals(model, "model"))
+            .Should().BeTrue();
     }
 
     [Theory]

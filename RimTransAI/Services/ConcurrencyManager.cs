@@ -2,6 +2,8 @@ using System;
 using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace RimTransAI.Services;
 
@@ -17,13 +19,17 @@ public class ConcurrencyManager : IDisposable
     private readonly int _intervalMs;
     private long _lastRequestStartTimestamp;
     private bool _disposed;
+    private readonly ILogger<ConcurrencyManager> _logger;
 
     /// <summary>
     /// 初始化并发控制器
     /// </summary>
     /// <param name="maxConcurrentRequests">最大并发请求数</param>
     /// <param name="intervalMs">请求间隔（毫秒），防止请求过于密集</param>
-    public ConcurrencyManager(int maxConcurrentRequests, int intervalMs = 0)
+    public ConcurrencyManager(
+        int maxConcurrentRequests,
+        int intervalMs = 0,
+        ILogger<ConcurrencyManager>? logger = null)
     {
         if (maxConcurrentRequests < 1)
             throw new ArgumentException("最大并发数必须大于 0", nameof(maxConcurrentRequests));
@@ -32,6 +38,7 @@ public class ConcurrencyManager : IDisposable
         _intervalMs = Math.Max(0, intervalMs);
         _semaphore = new SemaphoreSlim(maxConcurrentRequests, maxConcurrentRequests);
         _cts = new CancellationTokenSource();
+        _logger = logger ?? NullLogger<ConcurrencyManager>.Instance;
     }
 
     /// <summary>
@@ -57,7 +64,10 @@ public class ConcurrencyManager : IDisposable
         {
             // 获取信号量（限流）
             await _semaphore.WaitAsync(linkedCts.Token);
-            Logger.Debug($"并发槽已获取 | 剩余: {_semaphore.CurrentCount}/{_maxConcurrentRequests}");
+            _logger.LogDebug(
+                "并发槽已获取 AvailableSlots={AvailableSlots} MaxConcurrency={MaxConcurrency}",
+                _semaphore.CurrentCount,
+                _maxConcurrentRequests);
 
             try
             {
@@ -71,7 +81,10 @@ public class ConcurrencyManager : IDisposable
             {
                 // 释放信号量
                 _semaphore.Release();
-                Logger.Debug($"并发槽已释放 | 剩余: {_semaphore.CurrentCount}/{_maxConcurrentRequests}");
+                _logger.LogDebug(
+                    "并发槽已释放 AvailableSlots={AvailableSlots} MaxConcurrency={MaxConcurrency}",
+                    _semaphore.CurrentCount,
+                    _maxConcurrentRequests);
             }
         }
         catch (OperationCanceledException) when (linkedCts.Token.IsCancellationRequested)

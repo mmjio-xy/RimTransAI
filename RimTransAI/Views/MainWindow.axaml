@@ -1,6 +1,7 @@
 <Window xmlns="https://github.com/avaloniaui"
         xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
         xmlns:vm="using:RimTransAI.ViewModels"
+        xmlns:models="using:RimTransAI.Models"
         xmlns:views="using:RimTransAI.Views"
         xmlns:converters="using:RimTransAI.Converters"
         xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
@@ -20,7 +21,6 @@
 
     <Window.Resources>
         <converters:LogColorConverter x:Key="LogColorConverter"/>
-        <converters:LogLineSplitterConverter x:Key="LogLineSplitterConverter"/>
         <converters:BooleanInvertConverter x:Key="BooleanInvertConverter"/>
     </Window.Resources>
 
@@ -278,11 +278,11 @@
                     CornerRadius="6"
                     Padding="10">
                 <ScrollViewer Height="130" VerticalScrollBarVisibility="Auto">
-                    <ItemsControl ItemsSource="{Binding LogOutput, Converter={StaticResource LogLineSplitterConverter}}">
+                    <ItemsControl ItemsSource="{Binding OperationLogs}">
                         <ItemsControl.ItemTemplate>
-                            <DataTemplate>
-                                <TextBlock Text="{Binding}"
-                                          Foreground="{Binding Converter={StaticResource LogColorConverter}}"
+                            <DataTemplate x:DataType="models:OperationLogEntry">
+                                <TextBlock Text="{Binding Message}"
+                                          Foreground="{Binding Level, Converter={StaticResource LogColorConverter}}"
                                           TextWrapping="Wrap"
                                           FontSize="12"/>
                             </DataTemplate>
