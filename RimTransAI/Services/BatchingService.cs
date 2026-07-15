@@ -1,6 +1,8 @@
 using System;
 using System.Collections.Generic;
 using System.Linq;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using RimTransAI.Models;
 
 namespace RimTransAI.Services;
@@ -11,6 +13,13 @@ namespace RimTransAI.Services;
 /// </summary>
 public class BatchingService
 {
+    private readonly ILogger<BatchingService> _logger;
+
+    public BatchingService(ILogger<BatchingService>? logger = null)
+    {
+        _logger = logger ?? NullLogger<BatchingService>.Instance;
+    }
+
     /// <summary>
     /// 分批结果
     /// </summary>
@@ -86,7 +95,12 @@ public class BatchingService
         // 处理普通文本：按 Token 数智能分批
         CreateNormalBatches(normalGroups, safeTokenLimit, minItemsPerBatch, maxItemsPerBatch, result);
 
-        Logger.Debug($"分批完成: {result.TotalBatches} 批次 | 超大: {result.OversizedBatches} | 总Token: {result.BatchTokenCounts.Sum()} | token限制: {safeTokenLimit}");
+        _logger.LogDebug(
+            "分批完成 TotalBatches={TotalBatches} OversizedBatches={OversizedBatches} TotalTokens={TotalTokens} TokenLimit={TokenLimit}",
+            result.TotalBatches,
+            result.OversizedBatches,
+            result.BatchTokenCounts.Sum(),
+            safeTokenLimit);
         return result;
     }
 

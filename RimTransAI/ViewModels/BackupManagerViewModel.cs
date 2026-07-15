@@ -6,6 +6,8 @@ using System.Threading.Tasks;
 using Avalonia.Controls;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using RimTransAI.Services;
 using RimTransAI.Views;
 
@@ -14,6 +16,7 @@ namespace RimTransAI.ViewModels;
 public partial class BackupManagerViewModel : ViewModelBase
 {
     private readonly BackupService _backupService;
+    private readonly ILogger<BackupManagerViewModel> _logger;
 
     [ObservableProperty] private ObservableCollection<BackupInfoViewModel> _backups = new();
     [ObservableProperty] private string _currentPackageId = "";
@@ -36,11 +39,16 @@ public partial class BackupManagerViewModel : ViewModelBase
     {
         // 设计时构造函数
         _backupService = new BackupService(new ConfigService());
+        _logger = NullLogger<BackupManagerViewModel>.Instance;
     }
 
-    public BackupManagerViewModel(BackupService backupService, string? currentPackageId = null)
+    public BackupManagerViewModel(
+        BackupService backupService,
+        ILogger<BackupManagerViewModel>? logger = null,
+        string? currentPackageId = null)
     {
         _backupService = backupService;
+        _logger = logger ?? NullLogger<BackupManagerViewModel>.Instance;
         CurrentPackageId = currentPackageId ?? "";
         LoadBackups();
     }
@@ -65,7 +73,7 @@ public partial class BackupManagerViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            Logger.Error($"打开备份目录失败: {ex.Message}", ex);
+            _logger.LogError(ex, "打开备份目录失败 BackupDirectory={BackupDirectory}", backupDir);
         }
     }
 
@@ -99,7 +107,7 @@ public partial class BackupManagerViewModel : ViewModelBase
         // 检查是否有当前 Mod 路径
         if (string.IsNullOrEmpty(CurrentModPath))
         {
-            Logger.Warning("恢复备份失败：未选择 Mod 文件夹");
+            _logger.LogWarning("恢复备份失败：未选择 Mod 文件夹");
             await ShowMessageDialog("无法恢复", "请先在主界面选择要恢复到的 Mod 文件夹");
             return;
         }

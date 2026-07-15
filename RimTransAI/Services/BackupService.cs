@@ -7,6 +7,8 @@ using System.Security.Cryptography;
 using System.Text;
 using System.Text.Json;
 using System.Text.RegularExpressions;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using RimTransAI.Models;
 
 namespace RimTransAI.Services;
@@ -14,11 +16,13 @@ namespace RimTransAI.Services;
 public class BackupService
 {
     private readonly ConfigService _configService;
+    private readonly ILogger<BackupService> _logger;
     private const string MetadataFileName = "backup_metadata.json";
 
-    public BackupService(ConfigService configService)
+    public BackupService(ConfigService configService, ILogger<BackupService>? logger = null)
     {
         _configService = configService;
+        _logger = logger ?? NullLogger<BackupService>.Instance;
     }
 
     /// <summary>
@@ -47,7 +51,7 @@ public class BackupService
         }
         catch (Exception ex)
         {
-            Logger.Warning($"读取元数据文件失败: {ex.Message}");
+            _logger.LogWarning(ex, "读取备份元数据失败");
             return new BackupMetadataFile();
         }
     }
@@ -67,7 +71,7 @@ public class BackupService
         }
         catch (Exception ex)
         {
-            Logger.Error($"保存元数据文件失败: {ex.Message}", ex);
+            _logger.LogError(ex, "保存备份元数据失败");
         }
     }
 
@@ -131,7 +135,7 @@ public class BackupService
         // 检查是否启用自动备份
         if (!config.EnableAutoBackup)
         {
-            Logger.Info("自动备份已禁用，跳过备份");
+            _logger.LogInformation("自动备份已禁用，跳过备份");
             return null;
         }
 
@@ -141,7 +145,7 @@ public class BackupService
 
         if (!Directory.Exists(languagesDir))
         {
-            Logger.Info($"翻译文件夹不存在，跳过备份: {languagesDir}");
+            _logger.LogInformation("翻译文件夹不存在，跳过备份 LanguagesDirectory={LanguagesDirectory}", languagesDir);
             return null;
         }
 
@@ -155,7 +159,7 @@ public class BackupService
 
         if (targetLangFolder == null)
         {
-            Logger.Info($"目标语言文件夹不存在，跳过备份: {targetLang}");
+            _logger.LogInformation("目标语言文件夹不存在，跳过备份 TargetLanguage={TargetLanguage}", targetLang);
             return null;
         }
 
@@ -209,7 +213,10 @@ public class BackupService
             AddMetadataEntry(metadataEntry);
 
             long fileSizeKb = fileInfo.Length / 1024;
-            Logger.Info($"备份已创建: {zipFileName} ({fileSizeKb} KB)");
+            _logger.LogInformation(
+                "备份已创建 BackupFile={BackupFile} FileSizeKb={FileSizeKb}",
+                zipFileName,
+                fileSizeKb);
 
             // 6. 清理旧备份
             CleanupOldBackups(sanitizedPackageId, versionDisplay);
@@ -218,7 +225,7 @@ public class BackupService
         }
         catch (Exception ex)
         {
-            Logger.Error($"备份失败: {ex.Message}", ex);
+            _logger.LogError(ex, "创建备份失败 ModRootPath={ModRootPath}", modRootPath);
             return null;
         }
     }
@@ -315,7 +322,7 @@ public class BackupService
         }
         catch (Exception ex)
         {
-            Logger.Warning($"哈希校验异常: {ex.Message}");
+            _logger.LogWarning(ex, "备份哈希校验异常 BackupPath={BackupPath}", backupPath);
         }
 
         // 4. 确定目标路径
@@ -348,12 +355,15 @@ public class BackupService
             ZipFile.ExtractToDirectory(backupPath, languagesDir, Encoding.UTF8, true);
             result.Success = true;
             result.RestoredPath = targetLangPath;
-            Logger.Info($"恢复成功: {entry.FileName} -> {targetLangPath}");
+            _logger.LogInformation(
+                "备份恢复成功 BackupFile={BackupFile} TargetPath={TargetPath}",
+                entry.FileName,
+                targetLangPath);
         }
         catch (Exception ex)
         {
             result.ErrorMessage = $"解压失败: {ex.Message}";
-            Logger.Error($"恢复失败: {ex.Message}", ex);
+            _logger.LogError(ex, "恢复备份失败 PackageId={PackageId} Version={Version}", packageId, version);
         }
 
         return result;
@@ -373,7 +383,7 @@ public class BackupService
             if (File.Exists(backupPath))
             {
                 File.Delete(backupPath);
-                Logger.Info($"已删除备份: {fileName}");
+                _logger.LogInformation("已删除备份 BackupFile={BackupFile}", fileName);
             }
 
             // 同步更新元数据
@@ -382,7 +392,7 @@ public class BackupService
         }
         catch (Exception ex)
         {
-            Logger.Error($"删除备份失败: {ex.Message}", ex);
+            _logger.LogError(ex, "删除备份失败 BackupPath={BackupPath}", backupPath);
             return false;
         }
     }
@@ -428,11 +438,11 @@ public class BackupService
                 try
                 {
                     File.Delete(file);
-                    Logger.Info($"已删除旧备份: {Path.GetFileName(file)}");
+                    _logger.LogInformation("已删除旧备份 BackupFile={BackupFile}", Path.GetFileName(file));
                 }
                 catch (Exception ex)
                 {
-                    Logger.Warning($"删除旧备份失败 {Path.GetFileName(file)}: {ex.Message}");
+                    _logger.LogWarning(ex, "删除旧备份失败 BackupFile={BackupFile}", Path.GetFileName(file));
                 }
             }
         }

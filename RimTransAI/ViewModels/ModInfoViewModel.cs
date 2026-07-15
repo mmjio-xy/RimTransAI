@@ -8,12 +8,21 @@ using Avalonia.Media.Imaging;
 using Avalonia.Platform;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using RimTransAI.Models;
 
 namespace RimTransAI.ViewModels;
 
 public partial class ModInfoViewModel : ViewModelBase
 {
+    private readonly ILogger<ModInfoViewModel> _logger;
+
+    public ModInfoViewModel(ILogger<ModInfoViewModel>? logger = null)
+    {
+        _logger = logger ?? NullLogger<ModInfoViewModel>.Instance;
+    }
+
     // 基础信息
     [ObservableProperty]
     private string _name = string.Empty;
@@ -77,7 +86,7 @@ public partial class ModInfoViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            Services.Logger.Warning($"加载预览图失败: {ex.Message}");
+            _logger.LogWarning(ex, "加载 Mod 预览图失败 PreviewImagePath={PreviewImagePath}", modInfo.PreviewImagePath);
             // 加载失败时尝试加载默认占位图
             try
             {
@@ -156,7 +165,7 @@ public partial class ModInfoViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            Services.Logger.Warning($"打开链接失败: {ex.Message}");
+            _logger.LogWarning(ex, "打开 Mod 链接失败 Url={Url}", ResolvedUrl);
         }
     }
     
@@ -201,7 +210,7 @@ public partial class ModInfoViewModel : ViewModelBase
     {
         if (string.IsNullOrEmpty(FolderPath) || !System.IO.Directory.Exists(FolderPath))
         {
-            Services.Logger.Warning("Mod 路径无效");
+            _logger.LogWarning("Mod 路径无效 FolderPath={FolderPath}", FolderPath);
             return;
         }
 
@@ -216,7 +225,7 @@ public partial class ModInfoViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            Services.Logger.Warning($"打开文件夹失败: {ex.Message}");
+            _logger.LogWarning(ex, "打开 Mod 文件夹失败 FolderPath={FolderPath}", FolderPath);
         }
     }
 }

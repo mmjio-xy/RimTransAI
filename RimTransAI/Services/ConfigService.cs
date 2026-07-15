@@ -2,6 +2,8 @@ using System;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using RimTransAI.Models;
 
 namespace RimTransAI.Services;
@@ -10,9 +12,11 @@ public class ConfigService
 {
     private const string FileName = "settings.json";
     private readonly string _filePath;
+    private readonly ILogger<ConfigService> _logger;
 
-    public ConfigService()
+    public ConfigService(ILogger<ConfigService>? logger = null)
     {
+        _logger = logger ?? NullLogger<ConfigService>.Instance;
         // 存放在 EXE 同级目录
         _filePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, FileName);
         LoadConfig();
@@ -64,15 +68,15 @@ public class ConfigService
             }
             catch (JsonException ex)
             {
-                Logger.Warning($"配置文件JSON格式错误: {ex.Message}，使用默认配置");
+                _logger.LogWarning(ex, "配置文件 JSON 格式错误，使用默认配置 ConfigPath={ConfigPath}", _filePath);
             }
             catch (IOException ex)
             {
-                Logger.Warning($"配置文件读取失败: {ex.Message}，使用默认配置");
+                _logger.LogWarning(ex, "配置文件读取失败，使用默认配置 ConfigPath={ConfigPath}", _filePath);
             }
             catch (Exception ex)
             {
-                Logger.Error($"加载配置失败: {ex.GetType().Name} - {ex.Message}，使用默认配置");
+                _logger.LogError(ex, "加载配置失败，使用默认配置 ConfigPath={ConfigPath}", _filePath);
             }
         }
 
@@ -94,7 +98,7 @@ public class ConfigService
         }
         catch (Exception ex)
         {
-            Logger.Error($"保存配置失败", ex);
+            _logger.LogError(ex, "保存配置失败 ConfigPath={ConfigPath}", _filePath);
         }
     }
 

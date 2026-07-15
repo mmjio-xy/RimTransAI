@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using Mono.Cecil;
 
 namespace RimTransAI.Services;
@@ -12,6 +14,13 @@ namespace RimTransAI.Services;
 /// </summary>
 public class ReflectionAnalyzer
 {
+    private readonly ILogger<ReflectionAnalyzer> _logger;
+
+    public ReflectionAnalyzer(ILogger<ReflectionAnalyzer>? logger = null)
+    {
+        _logger = logger ?? NullLogger<ReflectionAnalyzer>.Instance;
+    }
+
     // 需要关注的核心基类名称
     private static readonly string[] CoreBaseTypeNames =
     {
@@ -42,7 +51,7 @@ public class ReflectionAnalyzer
     {
         if (!File.Exists(corePath))
         {
-            Logger.Error($"核心程序集不存在: {corePath}");
+            _logger.ErrorMessage($"核心程序集不存在: {corePath}");
             throw new FileNotFoundException($"核心程序集不存在: {corePath}");
         }
 
@@ -52,8 +61,8 @@ public class ReflectionAnalyzer
 
         try
         {
-            Logger.Info($"========== 开始加载核心程序集 ==========");
-            Logger.Info($"路径: {corePath}");
+            _logger.InfoMessage("========== 开始加载核心程序集 ==========");
+            _logger.InfoMessage($"路径: {corePath}");
 
             // 创建自定义的程序集解析器
             var resolver = new DefaultAssemblyResolver();
@@ -75,24 +84,24 @@ public class ReflectionAnalyzer
             _coreAssembly = AssemblyDefinition.ReadAssembly(corePath, readerParameters);
 
             // 第一步：构建核心类型缓存
-            Logger.Info("正在构建核心类型缓存...");
+            _logger.InfoMessage("正在构建核心类型缓存...");
             BuildCoreTypeCache();
 
             // [性能优化] 步骤 1.5：构建继承关系图
-            Logger.Info("正在构建继承关系图...");
+            _logger.InfoMessage("正在构建继承关系图...");
             BuildInheritanceGraph();
 
             // 第二步：分析核心基类及其派生类的可翻译字段
-            Logger.Info("正在分析核心类型的可翻译字段...");
+            _logger.InfoMessage("正在分析核心类型的可翻译字段...");
             AnalyzeCoreTypes();
 
-            Logger.Info($"========== 核心程序集加载完成 ==========");
-            Logger.Info($"类型缓存: {_typeCache.Count} 个类型");
-            Logger.Info($"字段映射: {_typeFieldsMap.Count} 个类型");
+            _logger.InfoMessage("========== 核心程序集加载完成 ==========");
+            _logger.InfoMessage($"类型缓存: {_typeCache.Count} 个类型");
+            _logger.InfoMessage($"字段映射: {_typeFieldsMap.Count} 个类型");
         }
         catch (Exception ex)
         {
-            Logger.Error("加载核心程序集失败", ex);
+            _logger.ErrorMessage("加载核心程序集失败", ex);
             throw new InvalidOperationException($"加载核心程序集失败: {ex.Message}", ex);
         }
     }
@@ -113,7 +122,7 @@ public class ReflectionAnalyzer
             CacheTypeRecursive(type);
         }
 
-        Logger.Info($"已缓存 {_typeCache.Count} 个核心类型");
+        _logger.InfoMessage($"已缓存 {_typeCache.Count} 个核心类型");
     }
 
     /// <summary>
@@ -138,7 +147,7 @@ public class ReflectionAnalyzer
             }
         }
 
-        Logger.Debug($"[性能优化] 已构建继承关系图: {_inheritanceGraph.Count} 个基类节点");
+        _logger.DebugMessage($"[性能优化] 已构建继承关系图: {_inheritanceGraph.Count} 个基类节点");
     }
 
     /// <summary>
@@ -171,12 +180,12 @@ public class ReflectionAnalyzer
         {
             if (_typeCache.TryGetValue(baseTypeName, out var baseType))
             {
-                Logger.Info($"分析基类: {baseTypeName}");
+                _logger.InfoMessage($"分析基类: {baseTypeName}");
                 AnalyzeTypeHierarchy(baseType);
             }
         }
 
-        Logger.Info($"已分析 {_typeFieldsMap.Count} 个类型的字段");
+        _logger.InfoMessage($"已分析 {_typeFieldsMap.Count} 个类型的字段");
     }
 
     /// <summary>
@@ -236,7 +245,7 @@ public class ReflectionAnalyzer
         if (translatableFields.Count > 0)
         {
             _typeFieldsMap[type.FullName] = translatableFields;
-            Logger.Debug($"[类型分析] {type.FullName}: {translatableFields.Count} 个可翻译字段");
+            _logger.DebugMessage($"[类型分析] {type.FullName}: {translatableFields.Count} 个可翻译字段");
         }
     }
 
@@ -257,7 +266,7 @@ public class ReflectionAnalyzer
                 }
 
                 // 单字段日志频率很高，仅保留在 Trace 级别。
-                Logger.Trace($"[字段收集] 类型 {type.Name}: {finalName}");
+                _logger.TraceMessage($"[字段收集] 类型 {type.Name}: {finalName}");
 
                 fields.Add(finalName);
             }
@@ -280,8 +289,8 @@ public class ReflectionAnalyzer
             throw new FileNotFoundException($"Mod 程序集不存在: {modDllPath}");
         }
 
-        Logger.Info($"========== 分析 Mod 程序集 ==========");
-        Logger.Info($"路径: {modDllPath}");
+        _logger.InfoMessage("========== 分析 Mod 程序集 ==========");
+        _logger.InfoMessage($"路径: {modDllPath}");
 
         var result = new Dictionary<string, HashSet<string>>();
 
@@ -317,25 +326,25 @@ public class ReflectionAnalyzer
             using var modAssembly = AssemblyDefinition.ReadAssembly(modDllPath, readerParameters);
 
             // 第一步：缓存 Mod 程序集中的所有类型
-            Logger.Info("正在缓存 Mod 类型...");
+            _logger.InfoMessage("正在缓存 Mod 类型...");
             foreach (var type in modAssembly.MainModule.Types)
             {
                 CacheTypeRecursive(type);
             }
 
             // 第二步：分析 Mod 中继承自核心基类的类型
-            Logger.Info("正在分析 Mod 类型...");
+            _logger.InfoMessage("正在分析 Mod 类型...");
             foreach (var type in modAssembly.MainModule.Types)
             {
                 AnalyzeModType(type, result);
             }
 
-            Logger.Info($"========== Mod 程序集分析完成 ==========");
-            Logger.Info($"找到 {result.Count} 个可翻译类型");
+            _logger.InfoMessage("========== Mod 程序集分析完成 ==========");
+            _logger.InfoMessage($"找到 {result.Count} 个可翻译类型");
         }
         catch (Exception ex)
         {
-            Logger.Error($"分析 Mod 程序集时出错", ex);
+            _logger.ErrorMessage("分析 Mod 程序集时出错", ex);
         }
 
         return result;
@@ -409,7 +418,7 @@ public class ReflectionAnalyzer
                 if (_typeFieldsMap.TryGetValue(type.FullName, out var fields))
                 {
                     result[type.FullName] = fields;
-                    Logger.Debug($"  找到类型: {type.Name}, 字段数: {fields.Count}");
+                    _logger.DebugMessage($"  找到类型: {type.Name}, 字段数: {fields.Count}");
                 }
 
                 break;
@@ -482,11 +491,11 @@ public class ReflectionAnalyzer
             {
                 typeRef = new TypeReference("", fullTypeName, _coreAssembly?.MainModule, _coreAssembly?.MainModule);
                 _typeReferenceCache[fullTypeName] = typeRef;
-                Logger.Trace($"[性能优化] TypeReference 缓存创建: {fullTypeName}");
+                _logger.TraceMessage($"[性能优化] TypeReference 缓存创建: {fullTypeName}");
             }
             else
             {
-                Logger.Trace($"[性能优化] TypeReference 缓存命中: {fullTypeName}");
+                _logger.TraceMessage($"[性能优化] TypeReference 缓存命中: {fullTypeName}");
             }
             return typeRef.Resolve();
         }

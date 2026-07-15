@@ -3,12 +3,21 @@ using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Xml.Linq;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using RimTransAI.Models;
 
 namespace RimTransAI.Services;
 
 public class FileGeneratorService
 {
+    private readonly ILogger<FileGeneratorService> _logger;
+
+    public FileGeneratorService(ILogger<FileGeneratorService>? logger = null)
+    {
+        _logger = logger ?? NullLogger<FileGeneratorService>.Instance;
+    }
+
     /// <summary>
     /// 保存翻译结果到文件，并附带原文注释
     /// </summary>
@@ -68,11 +77,11 @@ public class FileGeneratorService
 
                 doc.Save(targetPath);
                 filesCount++;
-                Logger.Debug($"已保存: {targetPath}");
+                _logger.LogDebug("翻译文件已保存 TargetPath={TargetPath}", targetPath);
             }
             catch (Exception ex)
             {
-                Logger.Error($"写入文件失败 {targetPath}", ex);
+                _logger.LogError(ex, "写入翻译文件失败 TargetPath={TargetPath}", targetPath);
             }
         }
 
@@ -152,7 +161,7 @@ public class FileGeneratorService
         return Path.Combine(contentRoot, "Languages", targetLang, "Keyed", "Misc_Generated.xml");
     }
 
-    private static XDocument BuildLanguageDataDocument(List<TranslationItem> items)
+    private XDocument BuildLanguageDataDocument(List<TranslationItem> items)
     {
         var doc = new XDocument(new XDeclaration("1.0", "utf-8", "yes"));
         var root = new XElement("LanguageData");
@@ -204,7 +213,7 @@ public class FileGeneratorService
             }
             catch (Exception ex)
             {
-                Logger.Error($"XML 节点创建失败 (Key: {item.Key}) - {ex.Message}");
+                _logger.LogError(ex, "XML 节点创建失败 TranslationKey={TranslationKey}", item.Key);
                 root.Add(new XComment($" ERROR: Could not save key '{item.Key}' "));
             }
         }

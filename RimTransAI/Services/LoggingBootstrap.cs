@@ -11,19 +11,10 @@ using Serilog.Formatting.Display;
 
 namespace RimTransAI.Services;
 
-public enum LogLevel
-{
-    Trace = 0,
-    Debug = 1,
-    Info = 2,
-    Warning = 3,
-    Error = 4
-}
-
 /// <summary>
-/// 应用日志入口。保留静态 API 以兼容现有调用点，底层使用 Serilog 异步写入滚动文件。
+/// 仅负责配置和管理全局日志管道。业务代码应使用注入的 Microsoft.Extensions.Logging.ILogger。
 /// </summary>
-public static class Logger
+public static class LoggingBootstrap
 {
     private const long FileSizeLimitBytes = 10 * 1024 * 1024;
     private const int RetainedFileCountLimit = 14;
@@ -40,11 +31,14 @@ public static class Logger
     public static void SetDebugMode(bool enabled)
     {
         LevelSwitch.MinimumLevel = enabled ? LogEventLevel.Debug : LogEventLevel.Information;
-        Info($"调试模式已{(enabled ? "开启" : "关闭")}，最小日志级别: {LevelSwitch.MinimumLevel}");
+        Log.ForContext<LoggingBootstrapMarker>().Information(
+            "调试模式已更新 Enabled={DebugEnabled} MinimumLevel={MinimumLevel}",
+            enabled,
+            LevelSwitch.MinimumLevel);
     }
 
     /// <summary>
-    /// 注册当前 API Key，仅用于日志脱敏。除 API Key 外不修改其他日志内容。
+    /// 注册当前 API Key，仅用于所有输出 Sink 的最终文本脱敏。
     /// </summary>
     public static void SetApiKey(string? apiKey)
     {
@@ -64,7 +58,7 @@ public static class Logger
                 var logsDirectory = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, "Logs");
                 Directory.CreateDirectory(logsDirectory);
 
-                // 使用连字符区分旧版的 RimTransAI_yyyyMMdd_HHmmss.log，避免滚动器误判旧文件序号。
+                // 使用连字符区分旧版文件名，避免滚动器误判旧文件序号。
                 var rollingPath = Path.Combine(logsDirectory, "RimTransAI-.log");
                 _logFilePath = Path.Combine(logsDirectory, $"RimTransAI-{DateTime.Now:yyyyMMdd}.log");
 
@@ -89,10 +83,11 @@ public static class Logger
 
                 _isInitialized = true;
 
-                Info("========================================");
-                Info($"RimTransAI 启动 - {DateTime.Now:yyyy-MM-dd HH:mm:ss}");
-                Info($"日志文件: {_logFilePath}");
-                Info("========================================");
+                var startupLogger = Log.ForContext<LoggingBootstrapMarker>();
+                startupLogger.Information("========================================");
+                startupLogger.Information("RimTransAI 启动 StartTime={StartTime}", DateTimeOffset.Now);
+                startupLogger.Information("日志文件 LogFilePath={LogFilePath}", _logFilePath);
+                startupLogger.Information("========================================");
             }
             catch (Exception ex)
             {
@@ -103,49 +98,7 @@ public static class Logger
         }
     }
 
-    public static void Trace(string message)
-    {
-        Write(LogEventLevel.Verbose, "TRACE", message);
-    }
-
-    public static void Debug(string message)
-    {
-        Write(LogEventLevel.Debug, "DEBUG", message);
-    }
-
-    public static void Info(string message)
-    {
-        Write(LogEventLevel.Information, "INFO", message);
-    }
-
-    public static void Warning(string message)
-    {
-        Write(LogEventLevel.Warning, "WARN", message);
-    }
-
-    public static void Error(string message)
-    {
-        Write(LogEventLevel.Error, "ERROR", message);
-    }
-
-    public static void Error(string message, Exception ex)
-    {
-        var safeMessage = RedactApiKey(message);
-
-        if (!_isInitialized)
-        {
-            Console.WriteLine($"[ERROR] {safeMessage}{Environment.NewLine}{RedactApiKey(ex.ToString())}");
-            return;
-        }
-
-        Log.ForContext("SourceContext", "RimTransAI")
-            .Error(ex, "{ErrorMessage}", safeMessage);
-    }
-
-    public static string? GetLogFilePath()
-    {
-        return Volatile.Read(ref _logFilePath);
-    }
+    public static string? GetLogFilePath() => Volatile.Read(ref _logFilePath);
 
     public static void Shutdown()
     {
@@ -156,7 +109,7 @@ public static class Logger
 
             try
             {
-                Info("RimTransAI 日志服务正在关闭");
+                Log.ForContext<LoggingBootstrapMarker>().Information("RimTransAI 日志服务正在关闭");
                 Log.CloseAndFlush();
             }
             finally
@@ -166,26 +119,8 @@ public static class Logger
         }
     }
 
-    private static void Write(LogEventLevel level, string fallbackLevel, string message)
-    {
-        if (level < LevelSwitch.MinimumLevel)
-            return;
-
-        var safeMessage = RedactApiKey(message);
-        if (!_isInitialized)
-        {
-            Console.WriteLine($"[{fallbackLevel}] {safeMessage}");
-            return;
-        }
-
-        Log.ForContext("SourceContext", "RimTransAI")
-            .Write(level, "{LogMessage}", safeMessage);
-    }
-
-    private static string RedactApiKey(string value)
-    {
-        return ApiKeyRedactor.Redact(value, Volatile.Read(ref _apiKey));
-    }
+    private static string RedactApiKey(string value) =>
+        ApiKeyRedactor.Redact(value, Volatile.Read(ref _apiKey));
 
     private sealed class ApiKeyRedactingFormatter : ITextFormatter
     {
@@ -198,6 +133,10 @@ public static class Logger
             _formatter.Format(logEvent, buffer);
             output.Write(RedactApiKey(buffer.ToString()));
         }
+    }
+
+    private sealed class LoggingBootstrapMarker
+    {
     }
 }
 

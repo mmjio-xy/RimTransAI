@@ -5,6 +5,8 @@ using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using RimTransAI.Models;
 using RimTransAI.Services.Scanning;
 
@@ -18,14 +20,24 @@ public class ModParserService
     private readonly ConfigService _configService;
     private readonly ReflectionAnalyzer _reflectionAnalyzer;
     private readonly ScanOrchestrator _scanOrchestrator;
+    private readonly ILogger<ModParserService> _logger;
+    private readonly ILoggerFactory _loggerFactory;
     private Dictionary<string, HashSet<string>>? _reflectionMap;
 
     // 构造函数：必须提供反射分析器和配置服务
-    public ModParserService(ReflectionAnalyzer reflectionAnalyzer, ConfigService configService)
+    public ModParserService(
+        ReflectionAnalyzer reflectionAnalyzer,
+        ConfigService configService,
+        ILogger<ModParserService>? logger = null,
+        ILoggerFactory? loggerFactory = null)
     {
         _reflectionAnalyzer = reflectionAnalyzer ?? throw new ArgumentNullException(nameof(reflectionAnalyzer));
         _configService = configService ?? throw new ArgumentNullException(nameof(configService));
-        _scanOrchestrator = new ScanOrchestrator();
+        _logger = logger ?? NullLogger<ModParserService>.Instance;
+        _loggerFactory = loggerFactory ?? NullLoggerFactory.Instance;
+        _scanOrchestrator = new ScanOrchestrator(
+            defFieldExtractionEngine: new DefFieldExtractionEngine(
+                logger: _loggerFactory.CreateLogger<DefFieldExtractionEngine>()));
     }
 
     public List<TranslationItem> ScanModFolder(string modPath)
@@ -34,37 +46,37 @@ public class ModParserService
 
         if (!Directory.Exists(modPath))
         {
-            Logger.Error($"Mod 目录不存在: {modPath}");
+            _logger.ErrorMessage($"Mod 目录不存在: {modPath}");
             return items;
         }
 
-        Logger.Info("========================================");
-        Logger.Info("开始扫描 Mod 文件夹");
-        Logger.Info($"路径: {modPath}");
-        Logger.Info("========================================");
+        _logger.InfoMessage("========================================");
+        _logger.InfoMessage("开始扫描 Mod 文件夹");
+        _logger.InfoMessage($"路径: {modPath}");
+        _logger.InfoMessage("========================================");
 
         // 第一步：加载类型定义（Core + Mod DLL）
-        Logger.Info("步骤 1/4: 加载类型定义...");
+        _logger.InfoMessage("步骤 1/4: 加载类型定义...");
         _reflectionMap = TryAnalyzeModAssemblies(modPath);
 
         if (_reflectionMap == null || _reflectionMap.Count == 0)
         {
-            Logger.Error("========================================");
-            Logger.Error("错误：无法加载核心类型定义");
-            Logger.Error("可能的原因：");
-            Logger.Error("1. 未配置 Assembly-CSharp.dll 路径");
-            Logger.Error("2. Assembly-CSharp.dll 文件不存在或损坏");
-            Logger.Error("========================================");
-            Logger.Info("请先在【参数设置】中配置 Assembly-CSharp.dll 的路径");
-            Logger.Info("Assembly-CSharp.dll 通常位于：");
-            Logger.Info("  Steam: steamapps/common/RimWorld/RimWorldWin64_Data/Managed/Assembly-CSharp.dll");
-            Logger.Error("========================================");
+            _logger.ErrorMessage("========================================");
+            _logger.ErrorMessage("错误：无法加载核心类型定义");
+            _logger.ErrorMessage("可能的原因：");
+            _logger.ErrorMessage("1. 未配置 Assembly-CSharp.dll 路径");
+            _logger.ErrorMessage("2. Assembly-CSharp.dll 文件不存在或损坏");
+            _logger.ErrorMessage("========================================");
+            _logger.InfoMessage("请先在【参数设置】中配置 Assembly-CSharp.dll 的路径");
+            _logger.InfoMessage("Assembly-CSharp.dll 通常位于：");
+            _logger.InfoMessage("  Steam: steamapps/common/RimWorld/RimWorldWin64_Data/Managed/Assembly-CSharp.dll");
+            _logger.ErrorMessage("========================================");
             return items;
         }
 
-        Logger.Info($"类型定义加载完成，找到 {_reflectionMap.Count} 个可翻译类型");
+        _logger.InfoMessage($"类型定义加载完成，找到 {_reflectionMap.Count} 个可翻译类型");
 
-        Logger.Info("步骤 2/4: 规划加载目录与语言目录...");
+        _logger.InfoMessage("步骤 2/4: 规划加载目录与语言目录...");
         var context = new ScanContext(
             modPath,
             "English",
@@ -72,15 +84,15 @@ public class ModParserService
             GetLikelyActivePackageIds(modPath),
             ResolveCurrentGameVersion(modPath));
 
-        Logger.Info("步骤 3/4: 收集 XML 源文件...");
-        Logger.Info("步骤 4/4: 提取可翻译字段...");
+        _logger.InfoMessage("步骤 3/4: 收集 XML 源文件...");
+        _logger.InfoMessage("步骤 4/4: 提取可翻译字段...");
         var scanResult = _scanOrchestrator.Scan(context, _reflectionMap);
         items.AddRange(scanResult.Items);
 
-        Logger.Info(
+        _logger.InfoMessage(
             $"阶段 1/3 目录规划: LoadFolders={scanResult.Diagnostics.LoadFolderCount}, " +
             $"LanguageDirs={scanResult.Diagnostics.LanguageDirectoryCount}");
-        Logger.Info(
+        _logger.InfoMessage(
             $"阶段 2/3 文件收集: Defs={scanResult.Diagnostics.DefFileCount}, " +
             $"Keyed={scanResult.Diagnostics.KeyedFileCount}, " +
             $"DefInjected={scanResult.Diagnostics.DefInjectedFileCount}, " +
@@ -90,18 +102,18 @@ public class ModParserService
             $"SourceAttempts={scanResult.Diagnostics.SourceFileAttemptCount}, " +
             $"Registered={scanResult.Diagnostics.SourceFileRegisteredCount}, " +
             $"Deduplicated={scanResult.Diagnostics.SourceFileDeduplicatedCount}");
-        Logger.Info(
+        _logger.InfoMessage(
             $"阶段 3/3 字段提取: Extracted={scanResult.Diagnostics.ExtractedItemCount}, " +
             $"Conflicts={scanResult.Diagnostics.ExtractionConflictCount}, " +
             $"Errors={scanResult.Diagnostics.ExtractionErrorCount}");
 
-        Logger.Info("========================================");
-        Logger.Info("扫描完成");
+        _logger.InfoMessage("========================================");
+        _logger.InfoMessage("扫描完成");
         var keyedCount = items.Count(x => x.DefType == "Keyed");
-        Logger.Info($"Defs 翻译项: {items.Count - keyedCount} 个");
-        Logger.Info($"Keyed 翻译项: {keyedCount} 个");
-        Logger.Info($"总计: {items.Count} 个");
-        Logger.Info("========================================");
+        _logger.InfoMessage($"Defs 翻译项: {items.Count - keyedCount} 个");
+        _logger.InfoMessage($"Keyed 翻译项: {keyedCount} 个");
+        _logger.InfoMessage($"总计: {items.Count} 个");
+        _logger.InfoMessage("========================================");
 
         return items;
     }
@@ -128,7 +140,7 @@ public class ModParserService
             }
             catch (Exception ex)
             {
-                Logger.Warning($"读取 Assembly-CSharp.dll 版本失败: {ex.Message}");
+                _logger.WarningMessage($"读取 Assembly-CSharp.dll 版本失败: {ex.Message}");
             }
         }
 
@@ -165,7 +177,7 @@ public class ModParserService
             : new Version(0, 0);
     }
 
-    private static HashSet<string> GetLikelyActivePackageIds(string modPath)
+    private HashSet<string> GetLikelyActivePackageIds(string modPath)
     {
         var result = new HashSet<string>(StringComparer.OrdinalIgnoreCase)
         {
@@ -209,7 +221,7 @@ public class ModParserService
         }
         catch (Exception ex)
         {
-            Logger.Warning($"读取 About.xml 依赖信息失败: {ex.Message}");
+            _logger.WarningMessage($"读取 About.xml 依赖信息失败: {ex.Message}");
         }
 
         return result;
@@ -228,7 +240,7 @@ public class ModParserService
             string corePath = _configService.CurrentConfig.AssemblyCSharpPath;
             if (string.IsNullOrWhiteSpace(corePath) || !File.Exists(corePath))
             {
-                Logger.Error("错误：未配置或找不到 Assembly-CSharp.dll，请在设置中配置");
+                _logger.ErrorMessage("错误：未配置或找不到 Assembly-CSharp.dll，请在设置中配置");
                 return null;
             }
 
@@ -238,14 +250,14 @@ public class ModParserService
             }
             catch (Exception ex)
             {
-                Logger.Error($"加载核心程序集失败", ex);
+                _logger.ErrorMessage("加载核心程序集失败", ex);
                 return null;
             }
 
             // ========== 第二步：尝试加载 Mod DLL（可选）==========
             var allDllFiles = new List<string>();
 
-            Logger.Info("正在查找 Mod DLL 文件...");
+            _logger.InfoMessage("正在查找 Mod DLL 文件...");
 
             // 2.1 检查根目录下的 Assemblies 文件夹
             var rootAssembliesDir = Path.Combine(modPath, "Assemblies");
@@ -254,7 +266,7 @@ public class ModParserService
                 // 优化：使用 EnumerateFiles
                 var rootDlls = Directory.EnumerateFiles(rootAssembliesDir, "*.dll", SearchOption.TopDirectoryOnly).ToList();
                 allDllFiles.AddRange(rootDlls);
-                Logger.Info($"  根目录/Assemblies: {rootDlls.Count} 个 DLL");
+                _logger.InfoMessage($"  根目录/Assemblies: {rootDlls.Count} 个 DLL");
             }
 
             // 2.2 检查版本目录下的 Assemblies 文件夹
@@ -276,7 +288,7 @@ public class ModParserService
                             var versionDlls = Directory.EnumerateFiles(versionAssembliesDir, "*.dll",
                                 SearchOption.TopDirectoryOnly).ToList();
                             allDllFiles.AddRange(versionDlls);
-                            Logger.Info($"  {dirName}/Assemblies: {versionDlls.Count} 个 DLL");
+                            _logger.InfoMessage($"  {dirName}/Assemblies: {versionDlls.Count} 个 DLL");
                         }
                     }
                 }
@@ -285,15 +297,15 @@ public class ModParserService
             // 2.3 如果没有找到 DLL，记录日志但不退出
             if (allDllFiles.Count == 0)
             {
-                Logger.Info("未找到任何 DLL 文件");
-                Logger.Info("纯 XML Mod，使用 Core 数据");
+                _logger.InfoMessage("未找到任何 DLL 文件");
+                _logger.InfoMessage("纯 XML Mod，使用 Core 数据");
             }
             else
             {
-                Logger.Info($"共找到 {allDllFiles.Count} 个 DLL 文件");
+                _logger.InfoMessage($"共找到 {allDllFiles.Count} 个 DLL 文件");
 
                 // 第三步：分析所有找到的 DLL 文件
-                Logger.Info("正在分析 DLL 文件...");
+                _logger.InfoMessage("正在分析 DLL 文件...");
                 int successCount = 0;
                 int failCount = 0;
 
@@ -308,12 +320,12 @@ public class ModParserService
                     }
                     catch (Exception ex)
                     {
-                        Logger.Error($"分析程序集失败: {Path.GetFileName(dllFile)}", ex);
+                        _logger.ErrorMessage($"分析程序集失败: {Path.GetFileName(dllFile)}", ex);
                         failCount++;
                     }
                 }
 
-                Logger.Info($"DLL 分析完成: 成功 {successCount} 个，失败 {failCount} 个");
+                _logger.InfoMessage($"DLL 分析完成: 成功 {successCount} 个，失败 {failCount} 个");
             }
 
             // ========== 第四步：统一返回全量数据 ==========
@@ -323,16 +335,16 @@ public class ModParserService
             if (allTypeFields.Count > 0)
             {
                 int totalFields = allTypeFields.Sum(x => x.Value.Count);
-                Logger.Info($"返回 {allTypeFields.Count} 个可翻译类型，共 {totalFields} 个字段");
+                _logger.InfoMessage($"返回 {allTypeFields.Count} 个可翻译类型，共 {totalFields} 个字段");
                 return allTypeFields;
             }
 
-            Logger.Warning("未找到任何可翻译的类型");
+            _logger.WarningMessage("未找到任何可翻译的类型");
             return null;
         }
         catch (Exception ex)
         {
-            Logger.Error($"扫描 Mod 程序集时出错", ex);
+            _logger.ErrorMessage("扫描 Mod 程序集时出错", ex);
             return null;
         }
     }

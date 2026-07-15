@@ -3,6 +3,8 @@ using System.Collections.Generic;
 using System.Linq;
 using System.Xml;
 using System.Xml.Linq;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using RimTransAI.Models;
 
 namespace RimTransAI.Services.Scanning;
@@ -19,18 +21,21 @@ public sealed class DefFieldExtractionEngine
     private readonly DefPathBuilder _defPathBuilder;
     private readonly FieldExtractionRuleSet _ruleSet;
     private readonly ExtractionConflictPolicy _conflictPolicy;
+    private readonly ILogger<DefFieldExtractionEngine> _logger;
     public ExtractionDiagnostics LastDiagnostics { get; private set; } = new();
 
     public DefFieldExtractionEngine(
         DefsSourceParser? defsSourceParser = null,
         DefPathBuilder? defPathBuilder = null,
         FieldExtractionRuleSet? ruleSet = null,
-        ExtractionConflictPolicy conflictPolicy = ExtractionConflictPolicy.LastWriteWins)
+        ExtractionConflictPolicy conflictPolicy = ExtractionConflictPolicy.LastWriteWins,
+        ILogger<DefFieldExtractionEngine>? logger = null)
     {
         _defsSourceParser = defsSourceParser ?? new DefsSourceParser();
         _defPathBuilder = defPathBuilder ?? new DefPathBuilder();
         _ruleSet = ruleSet ?? FieldExtractionRuleSet.CreateDefault();
         _conflictPolicy = conflictPolicy;
+        _logger = logger ?? NullLogger<DefFieldExtractionEngine>.Instance;
     }
 
     public List<TranslationItem> Extract(
@@ -56,7 +61,7 @@ public sealed class DefFieldExtractionEngine
         return results;
     }
 
-    private static void ExtractDefs(
+    private void ExtractDefs(
         DefsSourceParser defsSourceParser,
         DefPathBuilder defPathBuilder,
         FieldExtractionRuleSet ruleSet,
@@ -76,7 +81,10 @@ public sealed class DefFieldExtractionEngine
                 var parseResult = defsSourceParser.Parse(source.FullPath);
                 if (!string.IsNullOrWhiteSpace(parseResult.ErrorMessage))
                 {
-                    Logger.Warning($"Defs XML 解析失败 {source.FullPath}: {parseResult.ErrorMessage}");
+                    _logger.LogWarning(
+                        "Defs XML 解析失败 SourcePath={SourcePath} ErrorMessage={ErrorMessage}",
+                        source.FullPath,
+                        parseResult.ErrorMessage);
                     diagnostics.ErrorCount++;
                     continue;
                 }
@@ -88,7 +96,7 @@ public sealed class DefFieldExtractionEngine
 
                 if (parseResult.HitTraversalLimit)
                 {
-                    Logger.Warning($"Defs 文件触发结构遍历保护，已截断: {source.FullPath}");
+                    _logger.LogWarning("Defs 文件触发结构遍历保护 SourcePath={SourcePath}", source.FullPath);
                 }
 
                 foreach (var definition in parseResult.Definitions.OrderBy(x => x.Order))
@@ -118,12 +126,12 @@ public sealed class DefFieldExtractionEngine
             }
             catch (XmlException ex)
             {
-                Logger.Warning($"Defs XML 格式错误 {source.FullPath}: {ex.Message}");
+                _logger.LogWarning(ex, "Defs XML 格式错误 SourcePath={SourcePath}", source.FullPath);
                 diagnostics.ErrorCount++;
             }
             catch (Exception ex)
             {
-                Logger.Error($"解析 Defs 文件出错: {source.FullPath}", ex);
+                _logger.LogError(ex, "解析 Defs 文件出错 SourcePath={SourcePath}", source.FullPath);
                 diagnostics.ErrorCount++;
             }
         }
@@ -280,7 +288,7 @@ public sealed class DefFieldExtractionEngine
         return $"DefName={definition.DefName};Path={node.Path};Type={currentTypeName};Tag={node.Name}";
     }
 
-    private static void ExtractKeyed(
+    private void ExtractKeyed(
         ExtractionConflictPolicy conflictPolicy,
         IReadOnlyList<XmlSourceFile> keyedFiles,
         List<TranslationItem> output,
@@ -309,7 +317,10 @@ public sealed class DefFieldExtractionEngine
                     var key = element.Name.LocalName;
                     if (!seenKeysInFile.Add(key))
                     {
-                        Logger.Warning($"Keyed 文件内重复 Key，已跳过后续项: {key} ({source.FullPath})");
+                        _logger.LogWarning(
+                            "Keyed 文件内重复 Key，已跳过后续项 TranslationKey={TranslationKey} SourcePath={SourcePath}",
+                            key,
+                            source.FullPath);
                         diagnostics.ConflictCount++;
                         continue;
                     }
@@ -344,18 +355,18 @@ public sealed class DefFieldExtractionEngine
             }
             catch (XmlException ex)
             {
-                Logger.Warning($"Keyed XML 格式错误 {source.FullPath}: {ex.Message}");
+                _logger.LogWarning(ex, "Keyed XML 格式错误 SourcePath={SourcePath}", source.FullPath);
                 diagnostics.ErrorCount++;
             }
             catch (Exception ex)
             {
-                Logger.Error($"解析 Keyed 文件出错: {source.FullPath}", ex);
+                _logger.LogError(ex, "解析 Keyed 文件出错 SourcePath={SourcePath}", source.FullPath);
                 diagnostics.ErrorCount++;
             }
         }
     }
 
-    private static void ExtractDefInjected(
+    private void ExtractDefInjected(
         ExtractionConflictPolicy conflictPolicy,
         DefPathBuilder defPathBuilder,
         IReadOnlyList<XmlSourceFile> defInjectedFiles,
@@ -443,18 +454,18 @@ public sealed class DefFieldExtractionEngine
             }
             catch (XmlException ex)
             {
-                Logger.Warning($"DefInjected XML 格式错误 {source.FullPath}: {ex.Message}");
+                _logger.LogWarning(ex, "DefInjected XML 格式错误 SourcePath={SourcePath}", source.FullPath);
                 diagnostics.ErrorCount++;
             }
             catch (Exception ex)
             {
-                Logger.Error($"解析 DefInjected 文件出错: {source.FullPath}", ex);
+                _logger.LogError(ex, "解析 DefInjected 文件出错 SourcePath={SourcePath}", source.FullPath);
                 diagnostics.ErrorCount++;
             }
         }
     }
 
-    private static void ExtractBackstories(
+    private void ExtractBackstories(
         ExtractionConflictPolicy conflictPolicy,
         DefPathBuilder defPathBuilder,
         IReadOnlyList<XmlSourceFile> backstoryFiles,
@@ -535,12 +546,12 @@ public sealed class DefFieldExtractionEngine
             }
             catch (XmlException ex)
             {
-                Logger.Warning($"Backstories XML 格式错误 {source.FullPath}: {ex.Message}");
+                _logger.LogWarning(ex, "Backstories XML 格式错误 SourcePath={SourcePath}", source.FullPath);
                 diagnostics.ErrorCount++;
             }
             catch (Exception ex)
             {
-                Logger.Error($"解析 Backstories 文件出错: {source.FullPath}", ex);
+                _logger.LogError(ex, "解析 Backstories 文件出错 SourcePath={SourcePath}", source.FullPath);
                 diagnostics.ErrorCount++;
             }
         }

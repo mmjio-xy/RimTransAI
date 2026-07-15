@@ -16,7 +16,6 @@ public class FileGeneratorServiceTests : IDisposable
         _tempDir = Path.Combine(Path.GetTempPath(), $"RimTransAI_Test_{Guid.NewGuid():N}");
         Directory.CreateDirectory(_tempDir);
         _service = new FileGeneratorService();
-        Logger.Initialize();
     }
 
     public void Dispose()

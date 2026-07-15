@@ -362,8 +362,17 @@ public partial class MainWindowViewModel : ViewModelBase
             return;
         }
 
+        using var scanScope = _logger.BeginScope(new Dictionary<string, object>
+        {
+            ["OperationId"] = Guid.NewGuid().ToString("N"),
+            ["OperationType"] = "Scan",
+            ["ModName"] = SelectedMod.Name,
+            ["ModPath"] = targetPath
+        });
+
         try
         {
+            _logger.LogInformation("开始扫描 Mod");
             SelectedMod.Status = "扫描中";
             LogOutput = $"正在扫描 {SelectedMod.Name} ...";
 
@@ -387,6 +396,7 @@ public partial class MainWindowViewModel : ViewModelBase
             LogOutput = scannedItems.Count == 0
                 ? "扫描完成，但未发现可翻译条目。"
                 : $"扫描完成，共加载 {scannedItems.Count} 条翻译项。";
+            _logger.LogInformation("扫描 Mod 完成 ItemCount={ItemCount}", scannedItems.Count);
         }
         catch (Exception ex)
         {
@@ -395,6 +405,7 @@ public partial class MainWindowViewModel : ViewModelBase
                 SelectedMod.Status = "失败";
             }
             LogOutput = $"扫描失败: {ex.Message}";
+            _logger.LogError(ex, "扫描 Mod 失败");
         }
     }
 
@@ -811,15 +822,23 @@ public partial class MainWindowViewModel : ViewModelBase
 
         LogOutput = "正在生成 XML 文件...";
         string targetLang = _configService.CurrentConfig.TargetLanguage;
+        using var saveScope = _logger.BeginScope(new Dictionary<string, object>
+        {
+            ["OperationId"] = Guid.NewGuid().ToString("N"),
+            ["OperationType"] = "SaveTranslation",
+            ["ModName"] = SelectedMod.Name,
+            ["TargetLanguage"] = targetLang
+        });
 
         try
         {
+            _logger.LogInformation("开始生成翻译文件 ItemCount={ItemCount}", _allItems.Count);
             int count = await Task.Run(() =>
                 _fileGeneratorService.GenerateFiles(_currentModPath, targetLang, _allItems));
 
             LogOutput = $"保存成功！已在 Languages/{targetLang} 下生成 {count} 个文件。";
 
-            await Task.Run(() =>
+            var backupPath = await Task.Run(() =>
             {
                 string version = string.IsNullOrEmpty(SelectedVersion) || SelectedVersion == "全部"
                     ? ""
@@ -828,22 +847,28 @@ public partial class MainWindowViewModel : ViewModelBase
                 string packageId = _currentPackageId ?? "UnknownMod";
                 string modName = _currentModName ?? SelectedMod.Name;
 
-                var backupPath = _backupService.BackupTranslationFolder(
+                return _backupService.BackupTranslationFolder(
                     _currentModPath,
                     modName,
                     packageId,
                     version,
                     targetLang);
-
-                if (backupPath != null)
-                {
-                    LogOutput = $"{LogOutput}\n已自动创建备份。";
-                }
             });
+
+            if (backupPath != null)
+            {
+                LogOutput += "\n已自动创建备份。";
+            }
+
+            _logger.LogInformation(
+                "翻译文件生成完成 GeneratedFileCount={GeneratedFileCount} BackupCreated={BackupCreated}",
+                count,
+                backupPath != null);
         }
         catch (Exception ex)
         {
             LogOutput = $"保存失败: {ex.Message}";
+            _logger.LogError(ex, "生成翻译文件失败");
         }
     }
 
@@ -857,7 +882,8 @@ public partial class MainWindowViewModel : ViewModelBase
                 _currentPackageId = modInfo.PackageId;
                 _currentModName = modInfo.Name;
 
-                ModInfoViewModel = new ModInfoViewModel();
+                ModInfoViewModel = new ModInfoViewModel(
+                    _loggerFactory.CreateLogger<ModInfoViewModel>());
                 ModInfoViewModel.LoadFromModInfo(modInfo);
             }
             else

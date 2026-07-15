@@ -8,6 +8,8 @@ using Avalonia.Controls;
 using Avalonia.Platform.Storage;
 using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using RimTransAI.Models;
 using RimTransAI.Services;
 using RimTransAI.Views;
@@ -18,6 +20,7 @@ public partial class SettingsViewModel : ViewModelBase
 {
     private readonly ConfigService _configService;
     private readonly IconCatalogService _iconCatalogService;
+    private readonly ILogger<SettingsViewModel> _logger;
 
     [ObservableProperty] private string _apiKey = string.Empty;
     [ObservableProperty] private string _apiUrl = string.Empty;
@@ -73,13 +76,18 @@ public partial class SettingsViewModel : ViewModelBase
     {
         _configService = new ConfigService();
         _iconCatalogService = new IconCatalogService();
+        _logger = NullLogger<SettingsViewModel>.Instance;
         LoadFromService();
     }
 
-    public SettingsViewModel(ConfigService configService, IconCatalogService iconCatalogService)
+    public SettingsViewModel(
+        ConfigService configService,
+        IconCatalogService iconCatalogService,
+        ILogger<SettingsViewModel>? logger = null)
     {
         _configService = configService;
         _iconCatalogService = iconCatalogService;
+        _logger = logger ?? NullLogger<SettingsViewModel>.Instance;
         LoadFromService();
     }
 
@@ -253,6 +261,7 @@ public partial class SettingsViewModel : ViewModelBase
         if (errors.Count > 0)
         {
             ValidationError = $"请检查配置项：{string.Join("、", errors)}";
+            _logger.LogWarning("设置验证失败 InvalidFields={InvalidFields}", errors);
             OnPropertyChanged(nameof(HasValidationError));
             return;
         }
@@ -303,8 +312,14 @@ public partial class SettingsViewModel : ViewModelBase
 
         _configService.SaveConfig(newConfig);
         App.SetTheme(newTheme);
-        Logger.SetApiKey(newConfig.ApiKey);
-        Logger.SetDebugMode(DebugMode);
+        LoggingBootstrap.SetApiKey(newConfig.ApiKey);
+        LoggingBootstrap.SetDebugMode(DebugMode);
+        _logger.LogInformation(
+            "设置已保存 Theme={Theme} DebugEnabled={DebugEnabled} MultiThreadEnabled={MultiThreadEnabled} MaxThreads={MaxThreads}",
+            newTheme,
+            DebugMode,
+            EnableMultiThreadTranslation,
+            newConfig.MaxThreads);
         CurrentWindow?.Close();
     }
 

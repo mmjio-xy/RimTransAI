@@ -5,6 +5,8 @@ using System.Threading.Tasks;
 using System.Xml.Linq;
 using Avalonia;
 using Avalonia.Media.Imaging;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using RimTransAI.Models;
 
 namespace RimTransAI.Services;
@@ -14,6 +16,13 @@ namespace RimTransAI.Services;
 /// </summary>
 public class ModInfoService
 {
+    private readonly ILogger<ModInfoService> _logger;
+
+    public ModInfoService(ILogger<ModInfoService>? logger = null)
+    {
+        _logger = logger ?? NullLogger<ModInfoService>.Instance;
+    }
+
     /// <summary>
     /// 从 Mod 文件夹加载 Mod 信息
     /// </summary>
@@ -23,7 +32,7 @@ public class ModInfoService
     {
         if (string.IsNullOrWhiteSpace(modFolderPath) || !Directory.Exists(modFolderPath))
         {
-            Logger.Warning($"Mod 文件夹路径无效: {modFolderPath}");
+            _logger.LogWarning("Mod 文件夹路径无效 ModFolderPath={ModFolderPath}", modFolderPath);
             return null;
         }
 
@@ -31,7 +40,7 @@ public class ModInfoService
         var aboutXmlPath = Path.Combine(modFolderPath, "About", "About.xml");
         if (!File.Exists(aboutXmlPath))
         {
-            Logger.Warning($"未找到 About.xml: {aboutXmlPath}");
+            _logger.LogWarning("未找到 About.xml AboutXmlPath={AboutXmlPath}", aboutXmlPath);
             return null;
         }
 
@@ -43,7 +52,7 @@ public class ModInfoService
 
             if (root == null || root.Name.LocalName != "ModMetaData")
             {
-                Logger.Warning($"About.xml 格式错误，根节点不是 ModMetaData: {aboutXmlPath}");
+                _logger.LogWarning("About.xml 根节点不是 ModMetaData AboutXmlPath={AboutXmlPath}", aboutXmlPath);
                 return null;
             }
 
@@ -87,12 +96,15 @@ public class ModInfoService
             var previewImagePath = Path.Combine(modFolderPath, "About", "Preview.png");
             modInfo.PreviewImagePath = File.Exists(previewImagePath) ? previewImagePath : string.Empty;
 
-            Logger.Info($"成功加载 Mod 信息: {modInfo.Name}");
+            _logger.LogInformation(
+                "成功加载 Mod 信息 ModName={ModName} PackageId={PackageId}",
+                modInfo.Name,
+                modInfo.PackageId);
             return modInfo;
         }
         catch (Exception ex)
         {
-            Logger.Error($"解析 About.xml 失败: {ex.Message}");
+            _logger.LogError(ex, "解析 About.xml 失败 AboutXmlPath={AboutXmlPath}", aboutXmlPath);
             return null;
         }
     }

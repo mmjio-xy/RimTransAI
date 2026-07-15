@@ -2,6 +2,8 @@ using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 using RimTransAI.Models;
 
 namespace RimTransAI.Services;
@@ -13,11 +15,16 @@ public class WorkspaceService
 {
     private readonly ModInfoService _modInfoService;
     private readonly IconCatalogService _iconCatalogService;
+    private readonly ILogger<WorkspaceService> _logger;
 
-    public WorkspaceService(ModInfoService modInfoService, IconCatalogService iconCatalogService)
+    public WorkspaceService(
+        ModInfoService modInfoService,
+        IconCatalogService iconCatalogService,
+        ILogger<WorkspaceService>? logger = null)
     {
         _modInfoService = modInfoService;
         _iconCatalogService = iconCatalogService;
+        _logger = logger ?? NullLogger<WorkspaceService>.Instance;
     }
 
     public List<WorkspaceModItem> DiscoverModsFromSources(IEnumerable<ModSourceFolder> sourceFolders)
@@ -64,7 +71,7 @@ public class WorkspaceService
                 }
                 catch (Exception ex)
                 {
-                    Logger.Warning($"发现 Mod 失败: {candidatePath} - {ex.Message}");
+                    _logger.LogWarning(ex, "发现 Mod 失败 CandidatePath={CandidatePath}", candidatePath);
                 }
             }
         }
