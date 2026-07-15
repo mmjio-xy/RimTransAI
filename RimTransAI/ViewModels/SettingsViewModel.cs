@@ -303,6 +303,7 @@ public partial class SettingsViewModel : ViewModelBase
 
         _configService.SaveConfig(newConfig);
         App.SetTheme(newTheme);
+        Logger.SetApiKey(newConfig.ApiKey);
         Logger.SetDebugMode(DebugMode);
         CurrentWindow?.Close();
     }

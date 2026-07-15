@@ -1,9 +1,11 @@
 using System;
+using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Avalonia.Styling;
 using Microsoft.Extensions.DependencyInjection;
+using Microsoft.Extensions.Logging;
 using RimTransAI.Services;
 using RimTransAI.ViewModels;
 using RimTransAI.Views;
@@ -12,12 +14,15 @@ namespace RimTransAI;
 
 public partial class App : Application
 {
+    private static bool _globalExceptionHandlersRegistered;
+
     public IServiceProvider? Services { get; private set; }
 
     public override void Initialize()
     {
         // 初始化日志服务
         Logger.Initialize();
+        RegisterGlobalExceptionHandlers();
         Logger.Info("开始初始化 Avalonia 应用程序");
 
         AvaloniaXamlLoader.Load(this);
@@ -33,6 +38,15 @@ public partial class App : Application
 
             // 1. 配置依赖注入
             var collection = new ServiceCollection();
+
+            collection.AddLogging(builder =>
+            {
+                builder.ClearProviders();
+            });
+            collection.AddSingleton<ILoggerProvider>(
+                _ => new Serilog.Extensions.Logging.SerilogLoggerProvider(
+                    Serilog.Log.Logger,
+                    dispose: false));
 
             // 注册 ViewModels
             collection.AddTransient<MainWindowViewModel>();
@@ -59,6 +73,7 @@ public partial class App : Application
 
             // 2. 启动时应用保存的主题
             var configService = Services.GetRequiredService<ConfigService>();
+            Logger.SetApiKey(configService.CurrentConfig.ApiKey);
             SetTheme(configService.CurrentConfig.AppTheme);
             Logger.Info($"应用主题: {configService.CurrentConfig.AppTheme}");
 
@@ -75,6 +90,7 @@ public partial class App : Application
                 {
                     DataContext = vm
                 };
+                desktop.Exit += (_, _) => Logger.Shutdown();
                 Logger.Info("主窗口创建完成");
             }
 
@@ -86,6 +102,37 @@ public partial class App : Application
             Logger.Error("框架初始化失败", ex);
             throw;
         }
+    }
+
+    private static void RegisterGlobalExceptionHandlers()
+    {
+        if (_globalExceptionHandlersRegistered)
+            return;
+
+        AppDomain.CurrentDomain.UnhandledException += (_, args) =>
+        {
+            if (args.ExceptionObject is Exception exception)
+            {
+                Logger.Error("发生未处理的应用程序异常", exception);
+            }
+            else
+            {
+                Logger.Error($"发生未处理的应用程序异常: {args.ExceptionObject}");
+            }
+
+            if (args.IsTerminating)
+            {
+                Logger.Shutdown();
+            }
+        };
+
+        TaskScheduler.UnobservedTaskException += (_, args) =>
+        {
+            Logger.Error("发生未观察到的任务异常", args.Exception);
+            args.SetObserved();
+        };
+
+        _globalExceptionHandlersRegistered = true;
     }
 
     // === 静态切换主题方法 ===

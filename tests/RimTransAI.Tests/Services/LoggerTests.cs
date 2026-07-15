@@ -7,6 +7,28 @@ namespace RimTransAI.Tests.Services;
 public class LoggerTests
 {
     [Fact]
+    public void ApiKeyRedactor_RedactsEveryApiKeyOccurrence()
+    {
+        const string apiKey = "sk-secret-value";
+        const string message = "request sk-secret-value failed; retry sk-secret-value";
+
+        var result = ApiKeyRedactor.Redact(message, apiKey);
+
+        result.Should().Be(
+            $"request {ApiKeyRedactor.RedactedValue} failed; retry {ApiKeyRedactor.RedactedValue}");
+    }
+
+    [Fact]
+    public void ApiKeyRedactor_DoesNotModifyOtherLogData()
+    {
+        const string message = "路径 C:\\Mods\\Example，模型 deepseek，原文 Example text";
+
+        var result = ApiKeyRedactor.Redact(message, "sk-secret-value");
+
+        result.Should().Be(message);
+    }
+
+    [Fact]
     public void SetDebugMode_WhenEnabled_AllowsDebugLogs()
     {
         // Arrange
@@ -90,7 +112,7 @@ public class LoggerTests
 
         // Assert
         path.Should().NotBeNullOrEmpty();
-        path.Should().Contain("RimTransAI_");
+        path.Should().Contain("RimTransAI-");
         path.Should().EndWith(".log");
     }
 }

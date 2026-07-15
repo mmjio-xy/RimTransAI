@@ -236,9 +236,7 @@ public class ReflectionAnalyzer
         if (translatableFields.Count > 0)
         {
             _typeFieldsMap[type.FullName] = translatableFields;
-            // [Info 汇总] 显示类型分析完成后的字段总数
-            Logger.Info($"[类型分析] {type.FullName}: {translatableFields.Count} 个可翻译字段");
-            Logger.Debug($"  类型 {type.Name}: {translatableFields.Count} 个字段");
+            Logger.Debug($"[类型分析] {type.FullName}: {translatableFields.Count} 个可翻译字段");
         }
     }
 
@@ -258,8 +256,8 @@ public class ReflectionAnalyzer
                     finalName = CleanBackingFieldName(field.Name);
                 }
 
-                // [调试日志] 显示每个被收集的字段
-                Logger.Debug($"[字段收集] 类型 {type.Name}: {finalName}");
+                // 单字段日志频率很高，仅保留在 Trace 级别。
+                Logger.Trace($"[字段收集] 类型 {type.Name}: {finalName}");
 
                 fields.Add(finalName);
             }
@@ -484,11 +482,11 @@ public class ReflectionAnalyzer
             {
                 typeRef = new TypeReference("", fullTypeName, _coreAssembly?.MainModule, _coreAssembly?.MainModule);
                 _typeReferenceCache[fullTypeName] = typeRef;
-                Logger.Debug($"[性能优化] TypeReference 缓存创建: {fullTypeName}");
+                Logger.Trace($"[性能优化] TypeReference 缓存创建: {fullTypeName}");
             }
             else
             {
-                Logger.Debug($"[性能优化] TypeReference 缓存命中: {fullTypeName}");
+                Logger.Trace($"[性能优化] TypeReference 缓存命中: {fullTypeName}");
             }
             return typeRef.Resolve();
         }
