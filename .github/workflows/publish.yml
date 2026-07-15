@@ -27,7 +27,7 @@ jobs:
       - name: Setup .NET 9
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 9.0.x
+          global-json-file: global.json
           cache: true
           cache-dependency-path: |
             global.json
@@ -64,7 +64,7 @@ jobs:
       - name: Setup .NET 9
         uses: actions/setup-dotnet@v4
         with:
-          dotnet-version: 9.0.x
+          global-json-file: global.json
           cache: true
           cache-dependency-path: |
             global.json
