@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using System.Threading;
 using System.Threading.Tasks;
 
@@ -10,9 +11,11 @@ namespace RimTransAI.Services;
 public class ConcurrencyManager : IDisposable
 {
     private readonly SemaphoreSlim _semaphore;
+    private readonly SemaphoreSlim _requestStartGate = new(1, 1);
     private readonly CancellationTokenSource _cts;
     private readonly int _maxConcurrentRequests;
     private readonly int _intervalMs;
+    private long _lastRequestStartTimestamp;
     private bool _disposed;
 
     /// <summary>
@@ -46,7 +49,7 @@ public class ConcurrencyManager : IDisposable
             throw new ObjectDisposedException(nameof(ConcurrencyManager));
 
         // 组合取消令牌
-        var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
             cancellationToken,
             _cts.Token);
 
@@ -58,11 +61,8 @@ public class ConcurrencyManager : IDisposable
 
             try
             {
-                // 如果有间隔，等待一段时间
-                if (_intervalMs > 0)
-                {
-                    await Task.Delay(_intervalMs, linkedCts.Token);
-                }
+                // 所有并发任务共享同一个启动门，确保请求开始时间真正错开。
+                await WaitForRequestIntervalAsync(linkedCts.Token);
 
                 // 执行操作
                 return await operation(linkedCts.Token);
@@ -77,6 +77,32 @@ public class ConcurrencyManager : IDisposable
         catch (OperationCanceledException) when (linkedCts.Token.IsCancellationRequested)
         {
             throw new OperationCanceledException("操作已取消", linkedCts.Token);
+        }
+    }
+
+    private async Task WaitForRequestIntervalAsync(CancellationToken cancellationToken)
+    {
+        if (_intervalMs == 0)
+            return;
+
+        await _requestStartGate.WaitAsync(cancellationToken);
+        try
+        {
+            if (_lastRequestStartTimestamp != 0)
+            {
+                var elapsed = Stopwatch.GetElapsedTime(_lastRequestStartTimestamp);
+                var remaining = TimeSpan.FromMilliseconds(_intervalMs) - elapsed;
+                if (remaining > TimeSpan.Zero)
+                {
+                    await Task.Delay(remaining, cancellationToken);
+                }
+            }
+
+            _lastRequestStartTimestamp = Stopwatch.GetTimestamp();
+        }
+        finally
+        {
+            _requestStartGate.Release();
         }
     }
 
@@ -99,6 +125,11 @@ public class ConcurrencyManager : IDisposable
     public int RunningCount => _maxConcurrentRequests - _semaphore.CurrentCount;
 
     /// <summary>
+    /// 最大并发请求数。
+    /// </summary>
+    public int MaxConcurrentRequests => _maxConcurrentRequests;
+
+    /// <summary>
     /// 释放资源
     /// </summary>
     public void Dispose()
@@ -107,6 +138,7 @@ public class ConcurrencyManager : IDisposable
 
         _cts.Cancel();
         _cts.Dispose();
+        _requestStartGate.Dispose();
         _semaphore.Dispose();
         _disposed = true;
     }

@@ -32,6 +32,8 @@ public class ConfigService
                 CurrentConfig = JsonSerializer.Deserialize(json, AppJsonContext.Default.AppConfig)
                                 ?? new AppConfig();
 
+                NormalizeConfig(CurrentConfig);
+
                 // 兼容历史配置：清理旧版本序列化异常导致的空来源项，并补齐默认值
                 if (CurrentConfig.ModSourceFolders != null)
                 {
@@ -81,6 +83,8 @@ public class ConfigService
     {
         try
         {
+            NormalizeConfig(config);
+
             // 使用 AOT 友好的序列化方法
             var json = JsonSerializer.Serialize(config, AppJsonContext.Default.AppConfig);
             File.WriteAllText(_filePath, json);
@@ -92,6 +96,15 @@ public class ConfigService
         {
             Logger.Error($"保存配置失败", ex);
         }
+    }
+
+    public static void NormalizeConfig(AppConfig config)
+    {
+        ArgumentNullException.ThrowIfNull(config);
+
+        config.MaxThreads = Math.Clamp(config.MaxThreads, 1, 10);
+        config.ThreadIntervalMs = Math.Clamp(config.ThreadIntervalMs, 0, 1000);
+        config.ApiRequestTimeoutSeconds = Math.Clamp(config.ApiRequestTimeoutSeconds, 30, 1800);
     }
 }
 

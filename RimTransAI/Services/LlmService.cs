@@ -13,6 +13,11 @@ public class LlmService : IDisposable
 {
     private const string ChatCompletionsPath = "/v1/chat/completions";
     private const string V1Path = "/v1";
+    private readonly Lock _clientLock = new();
+    private ChatClient? _cachedChatClient;
+    private string? _cachedApiKey;
+    private Uri? _cachedEndpoint;
+    private string? _cachedModel;
 
     /// <summary>
     /// 批量翻译
@@ -26,7 +31,7 @@ public class LlmService : IDisposable
     /// <param name="requestTimeoutSeconds">请求超时秒数</param>
     /// <param name="autoCompleteApiUrl"></param>
     /// <param name="cancellationToken">取消令牌</param>
-    public async Task<Dictionary<string, string>> TranslateBatchAsync(
+    public virtual async Task<Dictionary<string, string>> TranslateBatchAsync(
         string apiKey,
         Dictionary<string, string> sourceTexts,
         string apiUrl,
@@ -48,13 +53,7 @@ public class LlmService : IDisposable
         using var timeoutCts = CancellationTokenSource.CreateLinkedTokenSource(cancellationToken);
         timeoutCts.CancelAfter(TimeSpan.FromSeconds(timeoutSeconds));
 
-        var options = new OpenAIClientOptions
-        {
-            Endpoint = endpoint
-        };
-
-        var client = new OpenAIClient(new ApiKeyCredential(apiKey), options);
-        var chatClient = client.GetChatClient(model);
+        var chatClient = GetOrCreateChatClient(apiKey, endpoint, model);
 
         var systemPrompt = !string.IsNullOrWhiteSpace(customPrompt)
             ? customPrompt.Replace("{targetLang}", targetLang)
@@ -83,7 +82,7 @@ public class LlmService : IDisposable
             if (string.IsNullOrEmpty(content))
             {
                 Logger.Warning("LLM 返回空 content");
-                return new Dictionary<string, string>();
+                throw new InvalidOperationException("LLM 返回了空响应");
             }
 
             Logger.Debug($"LLM 响应完成 — 模型: {completion.Value.Model} | Tokens: {completion.Value.Usage?.TotalTokenCount}");
@@ -99,7 +98,13 @@ public class LlmService : IDisposable
             content = content.Trim();
 
             var result = JsonSerializer.Deserialize(content, AppJsonContext.Default.DictionaryStringString)
-                         ?? new Dictionary<string, string>();
+                         ?? throw new JsonException("LLM 响应无法解析为翻译字典");
+
+            if (result.Count == 0)
+            {
+                throw new InvalidOperationException("LLM 未返回任何翻译结果");
+            }
+
             Logger.Debug($"LLM 翻译结果: {result.Count}/{sourceTexts.Count} 条成功");
             return result;
         }
@@ -108,10 +113,15 @@ public class LlmService : IDisposable
             Logger.Warning($"LLM 请求超时（{timeoutSeconds} 秒）");
             throw new TimeoutException($"API 请求超时（{timeoutSeconds} 秒）");
         }
+        catch (OperationCanceledException)
+        {
+            Logger.Debug("LLM 请求已取消");
+            throw;
+        }
         catch (Exception ex)
         {
             Logger.Error($"LLM 翻译失败: {ex.GetType().Name} - {ex.Message}");
-            return new Dictionary<string, string>();
+            throw;
         }
     }
 
@@ -160,7 +170,40 @@ public class LlmService : IDisposable
         return new Uri(url);
     }
 
+    private ChatClient GetOrCreateChatClient(string apiKey, Uri endpoint, string model)
+    {
+        lock (_clientLock)
+        {
+            if (_cachedChatClient != null &&
+                string.Equals(_cachedApiKey, apiKey, StringComparison.Ordinal) &&
+                Equals(_cachedEndpoint, endpoint) &&
+                string.Equals(_cachedModel, model, StringComparison.Ordinal))
+            {
+                return _cachedChatClient;
+            }
+
+            var options = new OpenAIClientOptions
+            {
+                Endpoint = endpoint
+            };
+
+            var client = new OpenAIClient(new ApiKeyCredential(apiKey), options);
+            _cachedChatClient = client.GetChatClient(model);
+            _cachedApiKey = apiKey;
+            _cachedEndpoint = endpoint;
+            _cachedModel = model;
+            return _cachedChatClient;
+        }
+    }
+
     public void Dispose()
     {
+        lock (_clientLock)
+        {
+            _cachedChatClient = null;
+            _cachedApiKey = null;
+            _cachedEndpoint = null;
+            _cachedModel = null;
+        }
     }
 }

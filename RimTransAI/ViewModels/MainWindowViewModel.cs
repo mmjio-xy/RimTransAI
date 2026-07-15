@@ -505,6 +505,7 @@ public partial class MainWindowViewModel : ViewModelBase
         int totalGroups = distinctGroups.Count;
         int totalItems = allItems.Count;
         int processedGroups = 0;
+        int successfulBatches = 0;
 
         Logger.Info($"开始翻译: {SelectedMod.Name} | 条目: {totalItems} | 去重: {totalGroups} | 模型: {config.TargetModel}");
 
@@ -527,7 +528,11 @@ public partial class MainWindowViewModel : ViewModelBase
         {
             if (config.EnableMultiThreadTranslation)
             {
-                await ExecuteMultiThreadTranslationAsync(batchResult, config, cancellationToken, totalBatches);
+                successfulBatches = await ExecuteMultiThreadTranslationAsync(
+                    batchResult,
+                    config,
+                    cancellationToken,
+                    totalBatches);
             }
             else
             {
@@ -582,6 +587,12 @@ public partial class MainWindowViewModel : ViewModelBase
                                 }
                             }
                         }
+
+                        successfulBatches++;
+                    }
+                    catch (OperationCanceledException)
+                    {
+                        throw;
                     }
                     catch (Exception ex)
                     {
@@ -600,8 +611,15 @@ public partial class MainWindowViewModel : ViewModelBase
 
             if (!cancellationToken.IsCancellationRequested)
             {
-                LogOutput += "\n翻译任务全部完成！";
+                LogOutput += successfulBatches == totalBatches
+                    ? "\n翻译任务全部完成！"
+                    : $"\n翻译结束：成功 {successfulBatches}/{totalBatches} 批次，其余批次失败。";
             }
+        }
+        catch (OperationCanceledException) when (cancellationToken.IsCancellationRequested)
+        {
+            Logger.Info("翻译已由用户取消");
+            LogOutput += "\n翻译已取消。";
         }
         catch (Exception ex)
         {
@@ -626,7 +644,7 @@ public partial class MainWindowViewModel : ViewModelBase
         LogOutput += "\n正在停止翻译...";
     }
 
-    private async Task ExecuteMultiThreadTranslationAsync(
+    private async Task<int> ExecuteMultiThreadTranslationAsync(
         BatchingService.BatchResult batchResult,
         AppConfig config,
         CancellationToken cancellationToken,
@@ -640,13 +658,15 @@ public partial class MainWindowViewModel : ViewModelBase
             UpdateMultiThreadProgress,
             AppendLogLine);
 
-        using var multiThreadService = new MultiThreadedTranslationService();
+        using var multiThreadService = new MultiThreadedTranslationService(
+            _llmService,
+            RunOnUiThreadAsync);
 
         progressReporter.ReportLog($"开始多线程翻译: {config.MaxThreads} 线程, {totalBatches} 批次");
 
         try
         {
-            await multiThreadService.ExecuteBatchesAsync(
+            return await multiThreadService.ExecuteBatchesAsync(
                 batchResult,
                 concurrencyManager,
                 progressReporter,
@@ -699,6 +719,17 @@ public partial class MainWindowViewModel : ViewModelBase
         }
 
         Dispatcher.UIThread.Post(action);
+    }
+
+    private static Task RunOnUiThreadAsync(Action action)
+    {
+        if (Dispatcher.UIThread.CheckAccess())
+        {
+            action();
+            return Task.CompletedTask;
+        }
+
+        return Dispatcher.UIThread.InvokeAsync(action).GetTask();
     }
 
     [RelayCommand]

@@ -135,7 +135,7 @@ public partial class SettingsViewModel : ViewModelBase
 
         EnableMultiThreadTranslation = cfg.EnableMultiThreadTranslation;
         MaxThreads = Math.Clamp(cfg.MaxThreads, 1, 10);
-        ThreadIntervalMs = Math.Max(0, cfg.ThreadIntervalMs);
+        ThreadIntervalMs = Math.Clamp(cfg.ThreadIntervalMs, 0, 1000);
         ApiRequestTimeoutSeconds = Math.Clamp(cfg.ApiRequestTimeoutSeconds, 30, 1800);
 
         EnableAutoBackup = cfg.EnableAutoBackup;
@@ -285,7 +285,7 @@ public partial class SettingsViewModel : ViewModelBase
             PromptTemplateName = templateName,
             EnableMultiThreadTranslation = EnableMultiThreadTranslation,
             MaxThreads = Math.Clamp(MaxThreads, 1, 10),
-            ThreadIntervalMs = Math.Max(0, ThreadIntervalMs),
+            ThreadIntervalMs = Math.Clamp(ThreadIntervalMs, 0, 1000),
             ApiRequestTimeoutSeconds = Math.Clamp(ApiRequestTimeoutSeconds, 30, 1800),
             EnableAutoBackup = EnableAutoBackup,
             BackupDirectory = BackupDirectory,

@@ -12,8 +12,50 @@ namespace RimTransAI.Services;
 /// </summary>
 public class MultiThreadedTranslationService : IDisposable
 {
-    private readonly LlmService _llmService = new();
+    private readonly LlmService _llmService;
+    private readonly bool _ownsLlmService;
+    private readonly Func<Action, Task> _applyItemUpdatesAsync;
     private bool _disposed;
+
+    public MultiThreadedTranslationService()
+        : this(new LlmService(), ownsLlmService: true, ApplyUpdatesInlineAsync)
+    {
+    }
+
+    /// <summary>
+    /// 使用外部提供的 LLM 服务。外部服务的生命周期仍由调用方管理。
+    /// </summary>
+    public MultiThreadedTranslationService(LlmService llmService)
+        : this(llmService, ownsLlmService: false, ApplyUpdatesInlineAsync)
+    {
+    }
+
+    /// <summary>
+    /// 使用外部 LLM 服务，并通过指定调度器应用 TranslationItem 属性更新。
+    /// </summary>
+    public MultiThreadedTranslationService(
+        LlmService llmService,
+        Func<Action, Task> applyItemUpdatesAsync)
+        : this(llmService, ownsLlmService: false, applyItemUpdatesAsync)
+    {
+    }
+
+    private MultiThreadedTranslationService(
+        LlmService llmService,
+        bool ownsLlmService,
+        Func<Action, Task> applyItemUpdatesAsync)
+    {
+        _llmService = llmService ?? throw new ArgumentNullException(nameof(llmService));
+        _ownsLlmService = ownsLlmService;
+        _applyItemUpdatesAsync = applyItemUpdatesAsync
+            ?? throw new ArgumentNullException(nameof(applyItemUpdatesAsync));
+    }
+
+    private static Task ApplyUpdatesInlineAsync(Action update)
+    {
+        update();
+        return Task.CompletedTask;
+    }
 
     /// <summary>
     /// 执行多线程翻译
@@ -27,7 +69,7 @@ public class MultiThreadedTranslationService : IDisposable
     /// <param name="targetLang">目标语言</param>
     /// <param name="customPrompt">自定义提示词</param>
     /// <param name="cancellationToken">取消令牌</param>
-    /// <returns>完成的批次数</returns>
+    /// <returns>成功完成的批次数</returns>
     public async Task<int> ExecuteBatchesAsync(
         BatchingService.BatchResult batchResult,
         ConcurrencyManager concurrencyManager,
@@ -48,30 +90,50 @@ public class MultiThreadedTranslationService : IDisposable
             return 0;
 
         var processedBatches = 0;
+        var successfulBatches = 0;
 
-        // 创建所有批次任务
-        var tasks = batchResult.Batches
-            .Select((batch, index) => ProcessBatchWithProgressAsync(
-                batch,
-                index + 1,
-                batchResult.TotalBatches,
-                concurrencyManager,
-                progressReporter,
-                apiKey,
-                apiUrl,
-                model,
-                targetLang,
-                requestTimeoutSeconds,
-                customPrompt,
-                autoCompleteApiUrl,
-                () => Interlocked.Increment(ref processedBatches),
-                cancellationToken))
+        var nextBatchIndex = -1;
+        var workerCount = Math.Min(
+            concurrencyManager.MaxConcurrentRequests,
+            batchResult.TotalBatches);
+
+        // 只创建固定数量的 worker，避免为每个批次同时创建 Task 和取消令牌注册。
+        var workers = Enumerable.Range(0, workerCount)
+            .Select(_ => ProcessBatchesAsync())
             .ToList();
 
-        // 等待所有任务完成
-        await Task.WhenAll(tasks);
+        await Task.WhenAll(workers);
 
-        return processedBatches;
+        return successfulBatches;
+
+        async Task ProcessBatchesAsync()
+        {
+            while (true)
+            {
+                cancellationToken.ThrowIfCancellationRequested();
+
+                var batchIndex = Interlocked.Increment(ref nextBatchIndex);
+                if (batchIndex >= batchResult.TotalBatches)
+                    return;
+
+                await ProcessBatchWithProgressAsync(
+                    batchResult.Batches[batchIndex],
+                    batchIndex + 1,
+                    batchResult.TotalBatches,
+                    concurrencyManager,
+                    progressReporter,
+                    apiKey,
+                    apiUrl,
+                    model,
+                    targetLang,
+                    requestTimeoutSeconds,
+                    customPrompt,
+                    autoCompleteApiUrl,
+                    () => Interlocked.Increment(ref processedBatches),
+                    () => Interlocked.Increment(ref successfulBatches),
+                    cancellationToken);
+            }
+        }
     }
 
     private async Task ProcessBatchWithProgressAsync(
@@ -88,9 +150,10 @@ public class MultiThreadedTranslationService : IDisposable
         string? customPrompt,
         bool autoCompleteApiUrl,
         Func<int> markBatchProcessed,
+        Func<int> markBatchSuccessful,
         CancellationToken cancellationToken)
     {
-        await ProcessBatchAsync(
+        var succeeded = await ProcessBatchAsync(
             batch,
             batchIndex,
             totalBatches,
@@ -105,6 +168,11 @@ public class MultiThreadedTranslationService : IDisposable
             autoCompleteApiUrl,
             cancellationToken);
 
+        if (succeeded)
+        {
+            markBatchSuccessful();
+        }
+
         var processed = markBatchProcessed();
         progressReporter.ReportProgress(
             processed,
@@ -116,7 +184,7 @@ public class MultiThreadedTranslationService : IDisposable
     /// <summary>
     /// 处理单个批次
     /// </summary>
-    private async Task ProcessBatchAsync(
+    private async Task<bool> ProcessBatchAsync(
         List<IGrouping<string, TranslationItem>> batch,
         int batchIndex,
         int totalBatches,
@@ -153,11 +221,12 @@ public class MultiThreadedTranslationService : IDisposable
             }, cancellationToken);
 
             // 应用翻译结果
-            ApplyTranslations(batch, translations);
+            await _applyItemUpdatesAsync(() => ApplyTranslations(batch, translations));
             Logger.Debug($"多线程批次 {batchIndex}/{totalBatches} — 结果已应用 ({translations.Count} 条)");
 
             // 报告批次完成
             progressReporter.ReportLog($"✓ 批次 {batchIndex}/{totalBatches} 完成，翻译 {batch.Count} 个文本");
+            return true;
         }
         catch (OperationCanceledException)
         {
@@ -172,13 +241,18 @@ public class MultiThreadedTranslationService : IDisposable
             Logger.Error($"多线程批次 {batchIndex}/{totalBatches} 翻译失败", ex);
 
             // 标记批次中的所有项为失败
-            foreach (var group in batch)
+            await _applyItemUpdatesAsync(() =>
             {
-                foreach (var item in group)
+                foreach (var group in batch)
                 {
-                    item.Status = "翻译失败";
+                    foreach (var item in group)
+                    {
+                        item.Status = "翻译失败";
+                    }
                 }
-            }
+            });
+
+            return false;
         }
     }
 
@@ -234,7 +308,10 @@ public class MultiThreadedTranslationService : IDisposable
     {
         if (_disposed) return;
 
-        _llmService?.Dispose();
+        if (_ownsLlmService)
+        {
+            _llmService.Dispose();
+        }
         _disposed = true;
     }
 }

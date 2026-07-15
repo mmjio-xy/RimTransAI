@@ -6,6 +6,23 @@ namespace RimTransAI.Tests.Services;
 
 public class LlmServiceTests
 {
+    [Fact]
+    public async Task TranslateBatchAsync_WithCancelledToken_PropagatesCancellation()
+    {
+        using var service = new LlmService();
+        using var cts = new CancellationTokenSource();
+        cts.Cancel();
+
+        var operation = () => service.TranslateBatchAsync(
+            "api-key",
+            new Dictionary<string, string> { ["source"] = "source" },
+            "https://example.com",
+            "model",
+            cancellationToken: cts.Token);
+
+        await operation.Should().ThrowAsync<OperationCanceledException>();
+    }
+
     [Theory]
     [InlineData("https://api.openai.com", "https://api.openai.com/v1/chat/completions")]
     [InlineData("https://api.openai.com/", "https://api.openai.com/v1/chat/completions")]

@@ -8,6 +8,23 @@ namespace RimTransAI.Tests.Services;
 public class ConfigServiceTests
 {
     [Fact]
+    public void NormalizeConfig_ClampsConcurrencyAndTimeoutValues()
+    {
+        var config = new AppConfig
+        {
+            MaxThreads = 0,
+            ThreadIntervalMs = 5000,
+            ApiRequestTimeoutSeconds = 5
+        };
+
+        ConfigService.NormalizeConfig(config);
+
+        config.MaxThreads.Should().Be(1);
+        config.ThreadIntervalMs.Should().Be(1000);
+        config.ApiRequestTimeoutSeconds.Should().Be(30);
+    }
+
+    [Fact]
     public void Constructor_CreatesInstanceWithDefaultConfig()
     {
         // Act

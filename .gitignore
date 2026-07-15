@@ -22,3 +22,4 @@ CHANGELOG.md
 CONTRIBUTING.md
 docs/*
 .spec-workflow/
+/.codegraph/
