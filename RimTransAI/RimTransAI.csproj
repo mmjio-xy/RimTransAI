@@ -33,6 +33,7 @@
     <PackageReference Include="Semi.Avalonia.DataGrid" Version="12.1.0" />
     <PackageReference Include="CommunityToolkit.Mvvm" Version="8.3.2" />
     <PackageReference Include="Microsoft.Extensions.DependencyInjection" Version="9.0.0" />
+    <PackageReference Include="MiniExcel" Version="1.45.0" />
     <PackageReference Include="OpenAI" Version="2.6.0" />
     <PackageReference Include="Serilog.Extensions.Logging" Version="9.0.2" />
     <PackageReference Include="Serilog.Sinks.Async" Version="2.1.0" />

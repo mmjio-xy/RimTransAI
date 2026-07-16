@@ -235,4 +235,77 @@ public class FileGeneratorServiceTests : IDisposable
         result.SuccessfulFileCount.Should().Be(2);
         result.SuccessfulVersions.Should().Equal("1.5", "1.6");
     }
+
+    [Fact]
+    public void GenerateFilesDetailed_WhenFieldIsExcluded_RemovesItFromGeneratedXml()
+    {
+        var outputPath = Path.Combine(
+            _tempDir,
+            "1.5",
+            "Languages",
+            "ChineseSimplified",
+            "Keyed",
+            "All.xml");
+        var items = new[]
+        {
+            new TranslationItem
+            {
+                DefType = "Keyed",
+                Version = "1.5",
+                FilePath = Path.Combine(_tempDir, "1.5", "Languages", "English", "Keyed", "All.xml"),
+                Key = "Keep",
+                OriginalText = "Keep",
+                TranslatedText = "保留",
+                Status = "已翻译"
+            },
+            new TranslationItem
+            {
+                DefType = "Keyed",
+                Version = "1.5",
+                FilePath = Path.Combine(_tempDir, "1.5", "Languages", "English", "Keyed", "All.xml"),
+                Key = "Remove",
+                OriginalText = "Remove",
+                TranslatedText = "删除",
+                Status = "已翻译",
+                IsExcluded = true
+            }
+        };
+
+        _service.GenerateFilesDetailed(_tempDir, "ChineseSimplified", items);
+
+        var document = XDocument.Load(outputPath);
+        document.Root!.Element("Keep")!.Value.Should().Be("保留");
+        document.Root.Element("Remove").Should().BeNull();
+    }
+
+    [Fact]
+    public void GenerateFilesDetailed_WhenEveryFieldInOutputIsExcluded_DeletesOldFile()
+    {
+        var outputPath = Path.Combine(
+            _tempDir,
+            "1.5",
+            "Languages",
+            "ChineseSimplified",
+            "Keyed",
+            "All.xml");
+        Directory.CreateDirectory(Path.GetDirectoryName(outputPath)!);
+        File.WriteAllText(outputPath, "<LanguageData><Old>旧内容</Old></LanguageData>");
+        var item = new TranslationItem
+        {
+            DefType = "Keyed",
+            Version = "1.5",
+            FilePath = Path.Combine(_tempDir, "1.5", "Languages", "English", "Keyed", "All.xml"),
+            Key = "Old",
+            OriginalText = "Old",
+            TranslatedText = "旧内容",
+            Status = "已翻译",
+            IsExcluded = true
+        };
+
+        var result = _service.GenerateFilesDetailed(_tempDir, "ChineseSimplified", [item]);
+
+        File.Exists(outputPath).Should().BeFalse();
+        result.DeletedFileCount.Should().Be(1);
+        result.SuccessfulVersions.Should().ContainSingle().Which.Should().Be("1.5");
+    }
 }

@@ -1,0 +1,85 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:RimTransAI.ViewModels"
+        mc:Ignorable="d"
+        d:DesignWidth="960"
+        d:DesignHeight="640"
+        x:Class="RimTransAI.Views.ExcelImportExportWindow"
+        x:DataType="vm:ExcelImportExportViewModel"
+        Title="导入/导出 Excel"
+        Width="960"
+        Height="640"
+        MinWidth="760"
+        MinHeight="480"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource SemiColorBackground0}">
+
+    <Grid RowDefinitions="Auto,Auto,Auto,*,Auto" Margin="20">
+        <StackPanel Grid.Row="0" Spacing="4">
+            <TextBlock Text="导入/导出 Excel"
+                       Classes="H4"
+                       Theme="{DynamicResource TitleTextBlock}"/>
+            <TextBlock Text="{Binding ScopeDescription}"
+                       Foreground="{DynamicResource SemiColorText3}"/>
+        </StackPanel>
+
+        <StackPanel Grid.Row="1"
+                    Orientation="Horizontal"
+                    Spacing="10"
+                    Margin="0,16,0,12">
+            <Button Content="导出当前表格"
+                    Command="{Binding ExportExcelCommand}"
+                    Theme="{DynamicResource SolidButton}"/>
+            <Button Content="选择 Excel 并预览"
+                    Command="{Binding SelectImportExcelCommand}"
+                    Theme="{DynamicResource SolidButton}"/>
+            <TextBlock Text="{Binding SelectedFileName}"
+                       VerticalAlignment="Center"
+                       Foreground="{DynamicResource SemiColorText3}"/>
+        </StackPanel>
+
+        <Border Grid.Row="2"
+                Background="{DynamicResource SemiColorFill1}"
+                BorderBrush="{DynamicResource SemiColorBorder}"
+                BorderThickness="1"
+                CornerRadius="4"
+                Padding="10"
+                Margin="0,0,0,12">
+            <TextBlock Text="{Binding ResultMessage}" TextWrapping="Wrap"/>
+        </Border>
+
+        <DataGrid Grid.Row="3"
+                  ItemsSource="{Binding PreviewRows}"
+                  IsReadOnly="True"
+                  CanUserResizeColumns="True"
+                  GridLinesVisibility="All"
+                  BorderThickness="1"
+                  BorderBrush="{DynamicResource SemiColorBorder}">
+            <DataGrid.Columns>
+                <DataGridTextColumn Header="版本" Binding="{Binding Version}" Width="90"/>
+                <DataGridTextColumn Header="Key" Binding="{Binding Key}" Width="220"/>
+                <DataGridTextColumn Header="原文" Binding="{Binding OriginalText}" Width="3*"/>
+                <DataGridTextColumn Header="译文" Binding="{Binding TranslatedText}" Width="3*"/>
+            </DataGrid.Columns>
+        </DataGrid>
+
+        <StackPanel Grid.Row="4"
+                    Orientation="Horizontal"
+                    HorizontalAlignment="Right"
+                    Spacing="10"
+                    Margin="0,16,0,0">
+            <Button Content="取消"
+                    Command="{Binding CancelCommand}"
+                    Theme="{DynamicResource TertiaryButton}"
+                    Width="100"/>
+            <Button Content="确认导入"
+                    Command="{Binding ConfirmImportCommand}"
+                    IsEnabled="{Binding CanConfirmImport}"
+                    Theme="{DynamicResource SolidButton}"
+                    Classes="Success"
+                    Width="110"/>
+        </StackPanel>
+    </Grid>
+</Window>

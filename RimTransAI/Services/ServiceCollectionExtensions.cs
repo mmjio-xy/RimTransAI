@@ -15,6 +15,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<ModParserService>();
         services.AddSingleton<LlmService>();
         services.AddSingleton<FileGeneratorService>();
+        services.AddSingleton<TranslationExcelService>();
         services.AddSingleton<BatchingService>();
         services.AddSingleton<ConfigService>();
         services.AddSingleton<ModInfoService>();

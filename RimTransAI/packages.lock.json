@@ -76,6 +76,12 @@
         "resolved": "9.0.17",
         "contentHash": "P5qY/hIYMlo0+QRM0W3Gd/SRf20TX+z5W5NwpdzkOk0FtgcbSTNwNcYBRNDgfThFcLpcDFslz65RcGqWOq00/w=="
       },
+      "MiniExcel": {
+        "type": "Direct",
+        "requested": "[1.45.0, )",
+        "resolved": "1.45.0",
+        "contentHash": "VsBtvXyhfPcbtNliuD9IMNqfBW01kRQl2/tA7JRIGjj82rcKNrz9Gfpn1FW8euXw91gkINWZuQv+n6XUURB3XA=="
+      },
       "Mono.Cecil": {
         "type": "Direct",
         "requested": "[0.11.6, )",

@@ -205,6 +205,9 @@
                                   ItemsSource="{Binding AvailableVersions}"
                                   SelectedItem="{Binding SelectedVersion}"
                                   PlaceholderText="全部" />
+                        <Button Content="导入/导出Excel"
+                                Command="{Binding OpenExcelImportExportCommand}"
+                                Theme="{DynamicResource SolidButton}" />
                     </StackPanel>
 
                     <DataGrid x:Name="TranslationDataGrid"

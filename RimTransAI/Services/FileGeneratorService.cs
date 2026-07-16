@@ -11,11 +11,13 @@ namespace RimTransAI.Services;
 
 public sealed record FileGenerationResult(
     int SuccessfulFileCount,
+    int DeletedFileCount,
     int FailedFileCount,
     int FailedNodeCount,
     IReadOnlyList<string> SuccessfulVersions)
 {
     public bool IsCompleteSuccess => FailedFileCount == 0 && FailedNodeCount == 0;
+    public int ChangedFileCount => SuccessfulFileCount + DeletedFileCount;
 }
 
 public class FileGeneratorService
@@ -38,15 +40,13 @@ public class FileGeneratorService
         string targetLang,
         IEnumerable<TranslationItem> items)
     {
-        var validItems = items
-            .Where(x => !string.IsNullOrWhiteSpace(x.TranslatedText) && x.Status == "已翻译")
-            .ToList();
-        if (validItems.Count == 0)
+        var sourceItems = items.ToList();
+        if (sourceItems.Count == 0)
         {
-            return new FileGenerationResult(0, 0, 0, []);
+            return new FileGenerationResult(0, 0, 0, 0, []);
         }
 
-        var groupedByTargetPath = validItems
+        var groupedByTargetPath = sourceItems
             .Select(item => new
             {
                 Item = item,
@@ -57,23 +57,52 @@ public class FileGeneratorService
             .ToList();
 
         var successfulFileCount = 0;
+        var deletedFileCount = 0;
         var failedFileCount = 0;
         var failedNodeCount = 0;
         var successfulVersions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var group in groupedByTargetPath)
         {
             var targetPath = group.Key;
-            var groupItems = group.Select(x => x.Item).ToList();
-            if (groupItems.Count == 0)
+            var allGroupItems = group.Select(x => x.Item).ToList();
+            if (allGroupItems.Count == 0)
             {
                 continue;
             }
 
-            var isBackstoryFile = groupItems.All(x =>
-                x.DefType.Equals("BackstoryDef", StringComparison.OrdinalIgnoreCase));
+            var groupItems = allGroupItems
+                .Where(item =>
+                    !item.IsExcluded &&
+                    !string.IsNullOrWhiteSpace(item.TranslatedText) &&
+                    item.Status == "已翻译")
+                .ToList();
 
             try
             {
+                if (groupItems.Count == 0)
+                {
+                    if (allGroupItems.Any(item => item.IsExcluded) && File.Exists(targetPath))
+                    {
+                        var fileInfo = new FileInfo(targetPath);
+                        if (fileInfo.IsReadOnly)
+                        {
+                            fileInfo.IsReadOnly = false;
+                        }
+
+                        File.Delete(targetPath);
+                        deletedFileCount++;
+                        foreach (var version in allGroupItems.Select(item => item.Version ?? string.Empty))
+                        {
+                            successfulVersions.Add(version);
+                        }
+                        _logger.LogInformation("已删除不再包含翻译字段的旧文件 TargetPath={TargetPath}", targetPath);
+                    }
+
+                    continue;
+                }
+
+                var isBackstoryFile = groupItems.All(x =>
+                    x.DefType.Equals("BackstoryDef", StringComparison.OrdinalIgnoreCase));
                 var doc = isBackstoryFile
                     ? BuildBackstoryDocument(groupItems, () => failedNodeCount++)
                     : BuildLanguageDataDocument(groupItems, () => failedNodeCount++);
@@ -110,6 +139,7 @@ public class FileGeneratorService
 
         return new FileGenerationResult(
             successfulFileCount,
+            deletedFileCount,
             failedFileCount,
             failedNodeCount,
             successfulVersions.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToArray());

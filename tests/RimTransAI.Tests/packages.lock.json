@@ -321,6 +321,11 @@
           "Newtonsoft.Json": "13.0.1"
         }
       },
+      "MiniExcel": {
+        "type": "Transitive",
+        "resolved": "1.45.0",
+        "contentHash": "VsBtvXyhfPcbtNliuD9IMNqfBW01kRQl2/tA7JRIGjj82rcKNrz9Gfpn1FW8euXw91gkINWZuQv+n6XUURB3XA=="
+      },
       "Mono.Cecil": {
         "type": "Transitive",
         "resolved": "0.11.6",
@@ -529,6 +534,7 @@
           "CommunityToolkit.Mvvm": "[8.3.2, )",
           "Material.Icons.Avalonia": "[3.0.0-avalonia12, )",
           "Microsoft.Extensions.DependencyInjection": "[9.0.0, )",
+          "MiniExcel": "[1.45.0, )",
           "Mono.Cecil": "[0.11.6, )",
           "OpenAI": "[2.6.0, )",
           "Semi.Avalonia": "[12.1.0, )",

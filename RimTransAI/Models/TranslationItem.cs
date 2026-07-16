@@ -16,6 +16,10 @@ public partial class TranslationItem : ObservableObject
     [ObservableProperty]
     private string _status = "等待中";
 
+    // 从外部表格删除的字段仍保留内部结构信息，保存时用于清理旧 XML 节点或文件。
+    [ObservableProperty]
+    private bool _isExcluded;
+
     // 翻译后的中文
     [ObservableProperty] 
     private string _translatedText = string.Empty;

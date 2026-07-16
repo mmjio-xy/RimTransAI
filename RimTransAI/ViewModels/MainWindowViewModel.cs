@@ -23,6 +23,7 @@ public partial class MainWindowViewModel : ViewModelBase
     private const string InitialLogMessage = "就绪。请先在设置页配置 Mod 来源目录。";
     private readonly ConfigService _configService;
     private readonly FileGeneratorService _fileGeneratorService;
+    private readonly TranslationExcelService _translationExcelService;
     private readonly LlmService _llmService;
     private readonly ModParserService _modParserService;
     private readonly BatchingService _batchingService;
@@ -84,6 +85,7 @@ public partial class MainWindowViewModel : ViewModelBase
         _modParserService = new ModParserService(reflectionAnalyzer, _configService);
         _llmService = new LlmService();
         _fileGeneratorService = new FileGeneratorService();
+        _translationExcelService = new TranslationExcelService();
         _batchingService = new BatchingService();
         _modInfoService = new ModInfoService();
         _backupService = new BackupService(_configService);
@@ -97,6 +99,7 @@ public partial class MainWindowViewModel : ViewModelBase
         ModParserService modParserService,
         LlmService llmService,
         FileGeneratorService fileGeneratorService,
+        TranslationExcelService translationExcelService,
         ConfigService configService,
         BatchingService batchingService,
         ModInfoService modInfoService,
@@ -108,6 +111,7 @@ public partial class MainWindowViewModel : ViewModelBase
         _modParserService = modParserService;
         _llmService = llmService;
         _fileGeneratorService = fileGeneratorService;
+        _translationExcelService = translationExcelService;
         _configService = configService;
         _batchingService = batchingService;
         _modInfoService = modInfoService;
@@ -212,6 +216,52 @@ public partial class MainWindowViewModel : ViewModelBase
         await settingsWindow.ShowDialog(topLevel);
         LoadWorkspaceFromConfig();
         LogOutput += "\n设置已更新，来源列表已刷新。";
+    }
+
+    [RelayCommand]
+    private async Task OpenExcelImportExport()
+    {
+        if (SelectedMod == null || !IsCurrentModLoaded || _allItems.Count == 0)
+        {
+            _logger.LogUserWarning("请先选择 Mod 并加载翻译条目，再使用 Excel 导入导出");
+            return;
+        }
+
+        var owner = Application.Current?.ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop
+            ? desktop.MainWindow
+            : null;
+        if (owner == null)
+            return;
+
+        var scopeItems = GetCurrentVersionScopeItems().ToList();
+        var viewModel = new ExcelImportExportViewModel(
+            _translationExcelService,
+            TranslationItems.ToList(),
+            scopeItems,
+            SelectedMod.Name,
+            SelectedVersion,
+            _loggerFactory.CreateLogger<ExcelImportExportViewModel>());
+        var window = new ExcelImportExportWindow
+        {
+            DataContext = viewModel
+        };
+
+        var confirmed = await window.ShowDialog<bool>(owner);
+        if (!confirmed || viewModel.PreparedImport is not { CanApply: true } preview)
+            return;
+
+        _translationExcelService.ApplyImport(preview);
+        ApplyFilter();
+        SelectedMod.ItemCount = _allItems.Count(item => !item.IsExcluded);
+        SelectedMod.Status = "Excel 已导入";
+        CurrentDataState =
+            $"Excel 已导入：更新 {preview.Updates.Count} 条，删除 {preview.DeletedItems.Count} 条，未变化 {preview.UnchangedCount} 条。";
+        LogOutput = CurrentDataState;
+        _logger.LogUserSuccess(
+            "Excel 翻译表格已导入：更新 {UpdatedCount} 条，删除 {DeletedCount} 条，未变化 {UnchangedCount} 条",
+            preview.Updates.Count,
+            preview.DeletedItems.Count,
+            preview.UnchangedCount);
     }
 
     [RelayCommand]
@@ -486,16 +536,8 @@ public partial class MainWindowViewModel : ViewModelBase
         TranslationItems.Clear();
         if (_allItems.Count == 0) return;
 
-        IEnumerable<TranslationItem> filtered;
-        if (string.IsNullOrEmpty(SelectedVersion) || SelectedVersion == "全部")
-        {
-            filtered = _allItems;
-        }
-        else
-        {
-            var targetVersion = SelectedVersion == "根目录" ? "" : SelectedVersion;
-            filtered = _allItems.Where(x => x.Version == targetVersion);
-        }
+        var filtered = GetCurrentVersionScopeItems()
+            .Where(item => !item.IsExcluded);
 
         foreach (var item in filtered)
         {
@@ -504,8 +546,20 @@ public partial class MainWindowViewModel : ViewModelBase
 
         if (SelectedMod != null)
         {
-            LogOutput = $"{SelectedMod.Name}: 显示 {TranslationItems.Count}/{_allItems.Count} 条 (版本: {SelectedVersion})";
+            var activeItemCount = _allItems.Count(item => !item.IsExcluded);
+            LogOutput = $"{SelectedMod.Name}: 显示 {TranslationItems.Count}/{activeItemCount} 条 (版本: {SelectedVersion})";
         }
+    }
+
+    private IEnumerable<TranslationItem> GetCurrentVersionScopeItems()
+    {
+        if (string.IsNullOrEmpty(SelectedVersion) || SelectedVersion == "全部")
+        {
+            return _allItems;
+        }
+
+        var targetVersion = SelectedVersion == "根目录" ? "" : SelectedVersion;
+        return _allItems.Where(item => item.Version == targetVersion);
     }
 
     [RelayCommand]
@@ -855,7 +909,7 @@ public partial class MainWindowViewModel : ViewModelBase
             return;
         }
 
-        if (TranslationItems.Count == 0 || string.IsNullOrEmpty(_currentModPath))
+        if (_allItems.Count == 0 || string.IsNullOrEmpty(_currentModPath))
         {
             LogOutput = "当前没有可保存的条目。";
             _logger.LogUserWarning("当前没有可保存的翻译条目");
@@ -878,17 +932,19 @@ public partial class MainWindowViewModel : ViewModelBase
             var generationResult = await Task.Run(() =>
                 _fileGeneratorService.GenerateFilesDetailed(_currentModPath, targetLang, _allItems));
             int count = generationResult.SuccessfulFileCount;
+            int deletedCount = generationResult.DeletedFileCount;
+            int changedCount = generationResult.ChangedFileCount;
 
-            LogOutput = count == 0 && generationResult.IsCompleteSuccess
-                ? "没有已翻译条目，因此未生成文件。"
+            LogOutput = changedCount == 0 && generationResult.IsCompleteSuccess
+                ? "没有需要写入或删除的翻译文件。"
                 : generationResult.IsCompleteSuccess
-                    ? $"保存成功！已在 Languages/{targetLang} 下生成 {count} 个文件。"
-                    : $"部分保存成功：生成 {count} 个文件，另有失败项，请查看日志。";
+                    ? $"保存成功！生成 {count} 个文件，删除 {deletedCount} 个旧文件。"
+                    : $"部分保存成功：生成 {count} 个文件，删除 {deletedCount} 个旧文件，另有失败项。";
 
             IReadOnlyList<string> backupPaths = [];
             var backupVersionCount = generationResult.SuccessfulVersions.Count;
             var autoBackupEnabled = _configService.CurrentConfig.EnableAutoBackup;
-            if (count > 0 && backupVersionCount > 0)
+            if (changedCount > 0 && backupVersionCount > 0)
             {
                 backupPaths = await Task.Run(() =>
                 {
@@ -908,35 +964,38 @@ public partial class MainWindowViewModel : ViewModelBase
             {
                 LogOutput += $"\n已自动创建 {backupPaths.Count} 个版本备份。";
             }
-            else if (count > 0 && autoBackupEnabled)
+            else if (changedCount > 0 && autoBackupEnabled)
             {
                 LogOutput += "\n自动备份未创建，请查看日志确认目标目录。";
             }
 
-            if (count == 0 && generationResult.IsCompleteSuccess)
+            if (changedCount == 0 && generationResult.IsCompleteSuccess)
             {
-                _logger.LogUserWarning("没有已翻译条目，本次未生成翻译文件");
+                _logger.LogUserWarning("没有需要写入或删除的翻译文件");
             }
             else if (generationResult.IsCompleteSuccess)
             {
                 if (!autoBackupEnabled)
                 {
                     _logger.LogUserSuccess(
-                        "翻译文件生成完成，共生成 {GeneratedFileCount} 个文件；自动备份未启用",
-                        count);
+                        "翻译文件保存完成：生成 {GeneratedFileCount} 个，删除 {DeletedFileCount} 个；自动备份未启用",
+                        count,
+                        deletedCount);
                 }
                 else if (backupPaths.Count == backupVersionCount)
                 {
                     _logger.LogUserSuccess(
-                        "翻译文件生成完成，共生成 {GeneratedFileCount} 个文件；已创建 {BackupCount} 个版本备份",
+                        "翻译文件保存完成：生成 {GeneratedFileCount} 个，删除 {DeletedFileCount} 个；已创建 {BackupCount} 个版本备份",
                         count,
+                        deletedCount,
                         backupPaths.Count);
                 }
                 else
                 {
                     _logger.LogUserWarning(
-                        "翻译文件生成完成，共生成 {GeneratedFileCount} 个文件；自动备份仅创建 {CreatedBackupCount}/{ExpectedBackupCount} 个",
+                        "翻译文件保存完成：生成 {GeneratedFileCount} 个，删除 {DeletedFileCount} 个；自动备份仅创建 {CreatedBackupCount}/{ExpectedBackupCount} 个",
                         count,
+                        deletedCount,
                         backupPaths.Count,
                         backupVersionCount);
                 }
@@ -944,8 +1003,9 @@ public partial class MainWindowViewModel : ViewModelBase
             else
             {
                 _logger.LogUserWarning(
-                    "翻译文件部分生成成功：成功 {SuccessfulFileCount} 个文件，失败 {FailedFileCount} 个文件，失败节点 {FailedNodeCount} 个",
+                    "翻译文件部分保存成功：生成 {SuccessfulFileCount} 个，删除 {DeletedFileCount} 个，失败文件 {FailedFileCount} 个，失败节点 {FailedNodeCount} 个",
                     generationResult.SuccessfulFileCount,
+                    generationResult.DeletedFileCount,
                     generationResult.FailedFileCount,
                     generationResult.FailedNodeCount);
             }
