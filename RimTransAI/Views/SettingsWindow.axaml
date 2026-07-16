@@ -93,6 +93,9 @@
                                     <TextBlock Text="调试模式 (Debug Mode)" Classes="Tertiary"/>
                                     <TextBlock Text="开启后才会在程序目录生成详细日志文件；关闭时仅在界面显示关键步骤"
                                                FontSize="12" Foreground="{DynamicResource SemiColorText3}"/>
+                                    <TextBlock Text="调试日志包含完整的大模型请求、提示词、原文及原始响应，请勿公开分享"
+                                               FontSize="12" Foreground="{DynamicResource SemiColorText3}"
+                                               TextWrapping="Wrap"/>
                                 </StackPanel>
                                 <ToggleSwitch Grid.Column="1"
                                               IsChecked="{Binding DebugMode}"

@@ -1,6 +1,7 @@
 using FluentAssertions;
 using RimTransAI.Services;
 using RimTransAI.Tests.Helpers;
+using System.Text.Json;
 using Xunit;
 
 namespace RimTransAI.Tests.Services;
@@ -29,6 +30,30 @@ public class LlmServiceTests
                 record.Properties.TryGetValue("Model", out var model) &&
                 Equals(model, "model"))
             .Should().BeTrue();
+
+        var requestRecord = logger.Records.Single(record =>
+            record.Properties.ContainsKey("RequestJson"));
+        requestRecord.Level.Should().Be(Microsoft.Extensions.Logging.LogLevel.Debug);
+
+        var requestJson = requestRecord.Properties["RequestJson"].Should().BeOfType<string>().Subject;
+        using var request = JsonDocument.Parse(requestJson);
+        request.RootElement.GetProperty("endpoint").GetString()
+            .Should().Be("https://example.com/v1");
+        request.RootElement.GetProperty("model").GetString().Should().Be("model");
+        request.RootElement.GetProperty("temperature").GetDouble().Should().Be(0.3);
+        request.RootElement.GetProperty("response_format").GetProperty("type").GetString()
+            .Should().Be("json_object");
+        request.RootElement.GetProperty("timeout_seconds").GetInt32().Should().Be(480);
+
+        var messages = request.RootElement.GetProperty("messages").EnumerateArray().ToArray();
+        messages.Should().HaveCount(2);
+        messages[0].GetProperty("role").GetString().Should().Be("system");
+        messages[0].GetProperty("content").GetString().Should().Contain("Simplified Chinese");
+        messages[1].GetProperty("role").GetString().Should().Be("user");
+
+        using var userContent = JsonDocument.Parse(messages[1].GetProperty("content").GetString()!);
+        userContent.RootElement.GetProperty("source").GetString().Should().Be("source");
+        requestJson.Should().NotContain("api-key");
     }
 
     [Theory]

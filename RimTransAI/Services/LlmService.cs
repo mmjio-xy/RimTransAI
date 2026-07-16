@@ -1,7 +1,9 @@
 using System;
 using System.Collections.Generic;
 using System.ClientModel;
+using System.IO;
 using System.Linq;
+using System.Text;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -93,10 +95,27 @@ public class LlmService : IDisposable
             ResponseFormat = ChatResponseFormat.CreateJsonObjectFormat()
         };
 
+        if (_logger.IsEnabled(LogLevel.Debug))
+        {
+            var requestJson = BuildRequestLogJson(
+                endpoint,
+                model,
+                systemPrompt,
+                userContent,
+                timeoutSeconds);
+            _logger.LogDiagnosticPayload(
+                "LLM 完整请求 JSON={RequestJson:l}",
+                requestJson);
+        }
+
         try
         {
             var completion = await chatClient.CompleteChatAsync(messages, chatOptions, timeoutCts.Token);
             var content = completion.Value.Content[0].Text;
+
+            _logger.LogDiagnosticPayload(
+                "LLM 原始响应 JSON={ResponseJson:l}",
+                content);
 
             if (string.IsNullOrEmpty(content))
             {
@@ -232,6 +251,47 @@ public class LlmService : IDisposable
             _cachedModel = model;
             return _cachedChatClient;
         }
+    }
+
+    private static string BuildRequestLogJson(
+        Uri endpoint,
+        string model,
+        string systemPrompt,
+        string userContent,
+        int timeoutSeconds)
+    {
+        using var stream = new MemoryStream();
+        using (var writer = new Utf8JsonWriter(stream))
+        {
+            writer.WriteStartObject();
+            writer.WriteString("endpoint", endpoint.ToString());
+            writer.WriteString("model", model);
+            writer.WritePropertyName("messages");
+            writer.WriteStartArray();
+            WriteMessage(writer, "system", systemPrompt);
+            WriteMessage(writer, "user", userContent);
+            writer.WriteEndArray();
+            writer.WriteNumber("temperature", 0.3);
+            writer.WritePropertyName("response_format");
+            writer.WriteStartObject();
+            writer.WriteString("type", "json_object");
+            writer.WriteEndObject();
+            writer.WriteNumber("timeout_seconds", timeoutSeconds);
+            writer.WriteEndObject();
+        }
+
+        return Encoding.UTF8.GetString(stream.ToArray());
+    }
+
+    private static void WriteMessage(
+        Utf8JsonWriter writer,
+        string role,
+        string content)
+    {
+        writer.WriteStartObject();
+        writer.WriteString("role", role);
+        writer.WriteString("content", content);
+        writer.WriteEndObject();
     }
 
     public void Dispose()

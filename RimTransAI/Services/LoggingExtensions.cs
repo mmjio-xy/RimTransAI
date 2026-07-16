@@ -28,6 +28,22 @@ public static class LoggingExtensions
     public static void ErrorMessage(this ILogger logger, string message, Exception exception) =>
         logger.LogError(exception, "{LogMessage}", message);
 
+    /// <summary>
+    /// 记录可能包含大量或敏感正文的调试载荷。事件会进入调试文件，但不会进入 UI 操作日志。
+    /// </summary>
+    public static void LogDiagnosticPayload(
+        this ILogger logger,
+        string messageTemplate,
+        params object?[] args)
+    {
+        using var scope = logger.BeginScope(new Dictionary<string, object>
+        {
+            [OperationLogSink.UiHiddenProperty] = true
+        });
+
+        logger.LogDebug(messageTemplate, args);
+    }
+
     public static void LogUserInformation(
         this ILogger logger,
         string messageTemplate,

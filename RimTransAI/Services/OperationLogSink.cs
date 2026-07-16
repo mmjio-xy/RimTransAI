@@ -14,6 +14,7 @@ public sealed class OperationLogSink : ILogEventSink
 {
     public const string UiVisibleProperty = "UiVisible";
     public const string UiLevelProperty = "UiLogLevel";
+    public const string UiHiddenProperty = "UiHidden";
 
     private readonly Func<bool> _isDebugModeEnabled;
     private readonly Func<string, string> _redact;
@@ -41,6 +42,9 @@ public sealed class OperationLogSink : ILogEventSink
 
     public void Emit(LogEvent logEvent)
     {
+        if (IsUiHidden(logEvent))
+            return;
+
         var debugMode = _isDebugModeEnabled();
         var uiVisible = IsUiVisible(logEvent);
         if (!debugMode && !uiVisible && logEvent.Level < LogEventLevel.Error)
@@ -69,6 +73,10 @@ public sealed class OperationLogSink : ILogEventSink
 
     private static bool IsUiVisible(LogEvent logEvent) =>
         logEvent.Properties.TryGetValue(UiVisibleProperty, out var value) &&
+        value is ScalarValue { Value: true };
+
+    private static bool IsUiHidden(LogEvent logEvent) =>
+        logEvent.Properties.TryGetValue(UiHiddenProperty, out var value) &&
         value is ScalarValue { Value: true };
 
     private static OperationLogLevel ResolveLevel(LogEvent logEvent)

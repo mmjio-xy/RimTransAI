@@ -73,4 +73,23 @@ public class OperationLogSinkTests
         buffer.Entries[0].Message.Should().Be("扫描完成，共 12 条");
         buffer.Entries[0].Level.Should().Be(OperationLogLevel.Success);
     }
+
+    [Fact]
+    public void DebugMode_DiagnosticPayload_DoesNotReachOperationSink()
+    {
+        var buffer = new OperationLogBuffer();
+        var sink = new OperationLogSink(() => true);
+        sink.Attach(buffer);
+        using var serilog = new LoggerConfiguration()
+            .MinimumLevel.Verbose()
+            .Enrich.FromLogContext()
+            .WriteTo.Sink(sink)
+            .CreateLogger();
+        using var provider = new SerilogLoggerProvider(serilog, dispose: false);
+        var logger = provider.CreateLogger(nameof(OperationLogSinkTests));
+
+        logger.LogDiagnosticPayload("LLM 完整请求 JSON={RequestJson:l}", "{\"source\":\"text\"}");
+
+        buffer.Entries.Should().BeEmpty();
+    }
 }
