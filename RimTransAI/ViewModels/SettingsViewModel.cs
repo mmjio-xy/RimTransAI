@@ -261,7 +261,7 @@ public partial class SettingsViewModel : ViewModelBase
         if (errors.Count > 0)
         {
             ValidationError = $"请检查配置项：{string.Join("、", errors)}";
-            _logger.LogWarning("设置验证失败 InvalidFields={InvalidFields}", errors);
+            _logger.LogUserWarning("设置验证失败，请检查：{InvalidFields}", errors);
             OnPropertyChanged(nameof(HasValidationError));
             return;
         }
@@ -310,7 +310,13 @@ public partial class SettingsViewModel : ViewModelBase
                 .ToList()
         };
 
-        _configService.SaveConfig(newConfig);
+        if (!_configService.SaveConfig(newConfig))
+        {
+            ValidationError = "设置保存失败，请检查程序目录写入权限。";
+            OnPropertyChanged(nameof(HasValidationError));
+            return;
+        }
+
         App.SetTheme(newTheme);
         LoggingBootstrap.SetApiKey(newConfig.ApiKey);
         LoggingBootstrap.SetDebugMode(DebugMode);

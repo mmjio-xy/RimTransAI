@@ -37,4 +37,18 @@ public class LoggingExtensionsTests
             "saved 3");
         logger.Records.ElementAt(4).Exception.Should().BeSameAs(exception);
     }
+
+    [Fact]
+    public void LogUserWarning_WithException_PreservesWarningAndException()
+    {
+        var logger = new RecordingLogger<LoggingExtensionsTests>();
+        var exception = new InvalidOperationException("failure");
+
+        logger.LogUserWarning(exception, "已回退：{Path}", "test.xml");
+
+        var record = logger.Records.Should().ContainSingle().Subject;
+        record.Level.Should().Be(LogLevel.Warning);
+        record.Message.Should().Be("已回退：test.xml");
+        record.Exception.Should().BeSameAs(exception);
+    }
 }

@@ -59,7 +59,7 @@ public class BackupService
     /// <summary>
     /// 保存元数据文件
     /// </summary>
-    private void SaveMetadata(BackupMetadataFile metadata)
+    private bool SaveMetadata(BackupMetadataFile metadata)
     {
         var metadataPath = GetMetadataFilePath();
         metadata.LastUpdated = DateTime.Now;
@@ -68,31 +68,33 @@ public class BackupService
         {
             var json = JsonSerializer.Serialize(metadata, AppJsonContext.Default.BackupMetadataFile);
             File.WriteAllText(metadataPath, json, Encoding.UTF8);
+            return true;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "保存备份元数据失败");
+            return false;
         }
     }
 
     /// <summary>
     /// 添加备份条目到元数据
     /// </summary>
-    private void AddMetadataEntry(BackupMetadataEntry entry)
+    private bool AddMetadataEntry(BackupMetadataEntry entry)
     {
         var metadata = LoadMetadata();
         metadata.Entries.Add(entry);
-        SaveMetadata(metadata);
+        return SaveMetadata(metadata);
     }
 
     /// <summary>
     /// 从元数据中移除条目
     /// </summary>
-    private void RemoveMetadataEntry(string fileName)
+    private bool RemoveMetadataEntry(string fileName)
     {
         var metadata = LoadMetadata();
         metadata.Entries.RemoveAll(e => e.FileName == fileName);
-        SaveMetadata(metadata);
+        return SaveMetadata(metadata);
     }
 
     /// <summary>
@@ -210,7 +212,20 @@ public class BackupService
                 CreatedAt = DateTime.Now,
                 OriginalModPath = modRootPath
             };
-            AddMetadataEntry(metadataEntry);
+            if (!AddMetadataEntry(metadataEntry))
+            {
+                _logger.LogUserWarning("备份文件已创建，但元数据保存失败，本次备份已回滚：{BackupFile}", zipFileName);
+                try
+                {
+                    File.Delete(zipPath);
+                }
+                catch (Exception cleanupException)
+                {
+                    _logger.LogError(cleanupException, "回滚未登记备份文件失败 BackupPath={BackupPath}", zipPath);
+                }
+
+                return null;
+            }
 
             long fileSizeKb = fileInfo.Length / 1024;
             _logger.LogInformation(
@@ -285,6 +300,10 @@ public class BackupService
     public RestoreResult RestoreFromBackup(string modRootPath, string packageId, string version)
     {
         var result = new RestoreResult();
+        _logger.LogUserInformation(
+            "开始恢复备份：{PackageId}，版本 {Version}",
+            packageId,
+            version);
 
         // 1. 从元数据查找备份
         var metadata = LoadMetadata();
@@ -297,6 +316,10 @@ public class BackupService
         if (entry == null)
         {
             result.ErrorMessage = "未找到匹配的备份记录";
+            _logger.LogUserWarning(
+                "恢复备份失败：未找到匹配记录，PackageId={PackageId} Version={Version}",
+                packageId,
+                version);
             return result;
         }
 
@@ -307,6 +330,7 @@ public class BackupService
         if (!File.Exists(backupPath))
         {
             result.ErrorMessage = $"备份文件不存在: {entry.FileName}";
+            _logger.LogUserWarning("恢复备份失败：备份文件不存在 {BackupFile}", entry.FileName);
             return result;
         }
 
@@ -317,12 +341,15 @@ public class BackupService
             if (!string.Equals(computedHash, entry.FileHash, StringComparison.OrdinalIgnoreCase))
             {
                 result.ErrorMessage = $"备份文件哈希校验失败，文件可能已损坏";
+                _logger.LogUserWarning("恢复备份失败：哈希校验不匹配 {BackupFile}", entry.FileName);
                 return result;
             }
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "备份哈希校验异常 BackupPath={BackupPath}", backupPath);
+            result.ErrorMessage = $"备份文件哈希校验异常: {ex.Message}";
+            _logger.LogUserError(ex, "恢复备份失败：无法校验备份文件 {BackupFile}", entry.FileName);
+            return result;
         }
 
         // 4. 确定目标路径
@@ -339,6 +366,10 @@ public class BackupService
             catch (Exception ex)
             {
                 result.ErrorMessage = $"删除现有文件夹失败: {ex.Message}";
+                _logger.LogUserError(
+                    ex,
+                    "恢复备份失败：无法删除现有目标目录 {TargetPath}",
+                    targetLangPath);
                 return result;
             }
         }
@@ -355,8 +386,8 @@ public class BackupService
             ZipFile.ExtractToDirectory(backupPath, languagesDir, Encoding.UTF8, true);
             result.Success = true;
             result.RestoredPath = targetLangPath;
-            _logger.LogInformation(
-                "备份恢复成功 BackupFile={BackupFile} TargetPath={TargetPath}",
+            _logger.LogUserSuccess(
+                "备份恢复成功：{BackupFile} → {TargetPath}",
                 entry.FileName,
                 targetLangPath);
         }
@@ -383,12 +414,15 @@ public class BackupService
             if (File.Exists(backupPath))
             {
                 File.Delete(backupPath);
-                _logger.LogInformation("已删除备份 BackupFile={BackupFile}", fileName);
+                _logger.LogUserSuccess("已删除备份：{BackupFile}", fileName);
+            }
+            else
+            {
+                _logger.LogUserWarning("备份文件已不存在，仅清理记录：{BackupFile}", fileName);
             }
 
             // 同步更新元数据
-            RemoveMetadataEntry(fileName);
-            return true;
+            return RemoveMetadataEntry(fileName);
         }
         catch (Exception ex)
         {

@@ -47,6 +47,7 @@ public sealed class ScanOrchestrator
             Items = items,
             Diagnostics = new ScanDiagnostics
             {
+                LoadFolderFallbackDueToError = _loadOrderPlanner.LastPlanUsedFallbackDueToError,
                 LoadFolderCount = loadFolders.Count,
                 LanguageDirectoryCount = languageDirectories.Count,
                 DefFileCount = sources.DefFiles.Count,

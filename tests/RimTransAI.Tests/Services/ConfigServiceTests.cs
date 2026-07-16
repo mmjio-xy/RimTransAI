@@ -1,6 +1,7 @@
 using FluentAssertions;
 using RimTransAI.Models;
 using RimTransAI.Services;
+using RimTransAI.Tests.Helpers;
 using Xunit;
 
 namespace RimTransAI.Tests.Services;
@@ -62,10 +63,58 @@ public class ConfigServiceTests
         };
 
         // Act
-        service.SaveConfig(newConfig);
+        var saved = service.SaveConfig(newConfig);
 
         // Assert
+        saved.Should().BeTrue();
         service.CurrentConfig.ApiUrl.Should().Be("https://new.api.com");
         service.CurrentConfig.DebugMode.Should().BeTrue();
+    }
+
+    [Fact]
+    public void SaveConfig_WhenTargetIsDirectory_ReturnsFalseAndLogsError()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"rta_config_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        try
+        {
+            var logger = new RecordingLogger<ConfigService>();
+            var service = new ConfigService(logger, filePath: directory);
+
+            var saved = service.SaveConfig(new AppConfig { ApiUrl = "https://example.com" });
+
+            saved.Should().BeFalse();
+            logger.Records.Should().Contain(record =>
+                record.Level == Microsoft.Extensions.Logging.LogLevel.Error &&
+                record.Message.Contains("保存配置失败", StringComparison.Ordinal));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Constructor_WhenJsonIsInvalid_UsesDefaultsAndLogsUserWarning()
+    {
+        var directory = Path.Combine(Path.GetTempPath(), $"rta_config_json_{Guid.NewGuid():N}");
+        Directory.CreateDirectory(directory);
+        var filePath = Path.Combine(directory, "settings.json");
+        File.WriteAllText(filePath, "{ invalid json");
+        try
+        {
+            var logger = new RecordingLogger<ConfigService>();
+
+            var service = new ConfigService(logger, filePath);
+
+            service.CurrentConfig.Should().NotBeNull();
+            logger.Records.Should().Contain(record =>
+                record.Level == Microsoft.Extensions.Logging.LogLevel.Warning &&
+                record.Message.Contains("已使用默认配置", StringComparison.Ordinal));
+        }
+        finally
+        {
+            Directory.Delete(directory, recursive: true);
+        }
     }
 }

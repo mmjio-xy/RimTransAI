@@ -396,7 +396,24 @@ public partial class MainWindowViewModel : ViewModelBase
             LogOutput = scannedItems.Count == 0
                 ? "扫描完成，但未发现可翻译条目。"
                 : $"扫描完成，共加载 {scannedItems.Count} 条翻译项。";
-            if (scannedItems.Count == 0)
+            var scanDiagnostics = _modParserService.LastScanDiagnostics;
+            var scanPartiallyFailed = scanDiagnostics.ExtractionErrorCount > 0 ||
+                                      scanDiagnostics.LoadFolderFallbackDueToError;
+            if (scanPartiallyFailed)
+            {
+                if (SelectedMod?.ModPath == targetPath)
+                {
+                    SelectedMod.Status = "部分完成";
+                }
+
+                LogOutput = $"扫描部分完成：加载 {scannedItems.Count} 条翻译项，发现 {scanDiagnostics.ExtractionErrorCount} 个提取错误。";
+                _logger.LogUserWarning(
+                    "扫描部分完成：加载 {ItemCount} 条翻译项，提取错误 {ExtractionErrorCount} 个，目录规划回退：{LoadFolderFallbackDueToError}",
+                    scannedItems.Count,
+                    scanDiagnostics.ExtractionErrorCount,
+                    scanDiagnostics.LoadFolderFallbackDueToError);
+            }
+            else if (scannedItems.Count == 0)
             {
                 _logger.LogUserWarning("扫描完成，但未发现可翻译条目");
             }
@@ -633,6 +650,7 @@ public partial class MainWindowViewModel : ViewModelBase
                             cancellationToken
                         );
 
+                        var missingCount = 0;
                         foreach (var group in batch)
                         {
                             var originalText = group.Key;
@@ -648,6 +666,7 @@ public partial class MainWindowViewModel : ViewModelBase
                             }
                             else
                             {
+                                missingCount++;
                                 foreach (var item in group)
                                 {
                                     if (string.IsNullOrEmpty(item.TranslatedText))
@@ -656,7 +675,18 @@ public partial class MainWindowViewModel : ViewModelBase
                             }
                         }
 
-                        successfulBatches++;
+                        if (missingCount == 0)
+                        {
+                            successfulBatches++;
+                        }
+                        else
+                        {
+                            _logger.LogWarning(
+                                "单线程翻译批次结果不完整 BatchIndex={BatchIndex} TotalBatches={TotalBatches} MissingCount={MissingCount}",
+                                i + 1,
+                                totalBatches,
+                                missingCount);
+                        }
                     }
                     catch (OperationCanceledException)
                     {
@@ -845,37 +875,61 @@ public partial class MainWindowViewModel : ViewModelBase
         try
         {
             _logger.LogUserInformation("开始生成翻译文件，共 {ItemCount} 条翻译项", _allItems.Count);
-            int count = await Task.Run(() =>
-                _fileGeneratorService.GenerateFiles(_currentModPath, targetLang, _allItems));
+            var generationResult = await Task.Run(() =>
+                _fileGeneratorService.GenerateFilesDetailed(_currentModPath, targetLang, _allItems));
+            int count = generationResult.SuccessfulFileCount;
 
-            LogOutput = $"保存成功！已在 Languages/{targetLang} 下生成 {count} 个文件。";
+            LogOutput = count == 0 && generationResult.IsCompleteSuccess
+                ? "没有已翻译条目，因此未生成文件。"
+                : generationResult.IsCompleteSuccess
+                    ? $"保存成功！已在 Languages/{targetLang} 下生成 {count} 个文件。"
+                    : $"部分保存成功：生成 {count} 个文件，另有失败项，请查看日志。";
 
-            var backupPath = await Task.Run(() =>
+            string? backupPath = null;
+            if (count > 0)
             {
-                string version = string.IsNullOrEmpty(SelectedVersion) || SelectedVersion == "全部"
-                    ? ""
-                    : SelectedVersion;
+                backupPath = await Task.Run(() =>
+                {
+                    string version = string.IsNullOrEmpty(SelectedVersion) || SelectedVersion == "全部"
+                        ? ""
+                        : SelectedVersion;
 
-                string packageId = _currentPackageId ?? "UnknownMod";
-                string modName = _currentModName ?? SelectedMod.Name;
+                    string packageId = _currentPackageId ?? "UnknownMod";
+                    string modName = _currentModName ?? SelectedMod.Name;
 
-                return _backupService.BackupTranslationFolder(
-                    _currentModPath,
-                    modName,
-                    packageId,
-                    version,
-                    targetLang);
-            });
+                    return _backupService.BackupTranslationFolder(
+                        _currentModPath,
+                        modName,
+                        packageId,
+                        version,
+                        targetLang);
+                });
+            }
 
             if (backupPath != null)
             {
                 LogOutput += "\n已自动创建备份。";
             }
 
-            _logger.LogUserSuccess(
-                "翻译文件生成完成，共生成 {GeneratedFileCount} 个文件，自动备份：{BackupCreated}",
-                count,
-                backupPath != null);
+            if (count == 0 && generationResult.IsCompleteSuccess)
+            {
+                _logger.LogUserWarning("没有已翻译条目，本次未生成翻译文件");
+            }
+            else if (generationResult.IsCompleteSuccess)
+            {
+                _logger.LogUserSuccess(
+                    "翻译文件生成完成，共生成 {GeneratedFileCount} 个文件，自动备份：{BackupCreated}",
+                    count,
+                    backupPath != null);
+            }
+            else
+            {
+                _logger.LogUserWarning(
+                    "翻译文件部分生成成功：成功 {SuccessfulFileCount} 个文件，失败 {FailedFileCount} 个文件，失败节点 {FailedNodeCount} 个",
+                    generationResult.SuccessfulFileCount,
+                    generationResult.FailedFileCount,
+                    generationResult.FailedNodeCount);
+            }
         }
         catch (Exception ex)
         {

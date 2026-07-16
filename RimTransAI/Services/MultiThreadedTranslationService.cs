@@ -246,12 +246,25 @@ public class MultiThreadedTranslationService : IDisposable
             }, cancellationToken);
 
             // 应用翻译结果
-            await _applyItemUpdatesAsync(() => ApplyTranslations(batch, translations));
+            var missingCount = 0;
+            await _applyItemUpdatesAsync(() => missingCount = ApplyTranslations(batch, translations));
             _logger.LogDebug(
-                "翻译批次结果已应用 BatchIndex={BatchIndex} TotalBatches={TotalBatches} TranslationCount={TranslationCount}",
+                "翻译批次结果已应用 BatchIndex={BatchIndex} TotalBatches={TotalBatches} TranslationCount={TranslationCount} MissingCount={MissingCount}",
                 batchIndex,
                 totalBatches,
-                translations.Count);
+                translations.Count,
+                missingCount);
+
+            if (missingCount > 0)
+            {
+                _logger.LogWarning(
+                    "翻译批次结果不完整 BatchIndex={BatchIndex} TotalBatches={TotalBatches} MissingCount={MissingCount}",
+                    batchIndex,
+                    totalBatches,
+                    missingCount);
+                progressReporter.ReportLog($"⚠ 批次 {batchIndex}/{totalBatches} 部分完成，缺少 {missingCount} 个翻译结果");
+                return false;
+            }
 
             // 报告批次完成
             progressReporter.ReportLog($"✓ 批次 {batchIndex}/{totalBatches} 完成，翻译 {batch.Count} 个文本");
@@ -313,8 +326,9 @@ public class MultiThreadedTranslationService : IDisposable
     /// <summary>
     /// 应用翻译结果到 TranslationItem
     /// </summary>
-    private void ApplyTranslations(List<IGrouping<string, TranslationItem>> batch, Dictionary<string, string> translations)
+    private int ApplyTranslations(List<IGrouping<string, TranslationItem>> batch, Dictionary<string, string> translations)
     {
+        var missingCount = 0;
         foreach (var group in batch)
         {
             if (translations.TryGetValue(group.Key, out string? translatedText) &&
@@ -328,6 +342,7 @@ public class MultiThreadedTranslationService : IDisposable
             }
             else
             {
+                missingCount++;
                 // 翻译结果中没有该原文或结果为空
                 foreach (var item in group)
                 {
@@ -335,6 +350,8 @@ public class MultiThreadedTranslationService : IDisposable
                 }
             }
         }
+
+        return missingCount;
     }
 
     /// <summary>

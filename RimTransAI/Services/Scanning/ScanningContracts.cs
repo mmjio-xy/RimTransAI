@@ -46,6 +46,7 @@ public sealed class XmlSourceCollection
 
 public sealed class ScanDiagnostics
 {
+    public bool LoadFolderFallbackDueToError { get; set; }
     public int LoadFolderCount { get; set; }
 
     public int LanguageDirectoryCount { get; set; }

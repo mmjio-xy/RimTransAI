@@ -14,11 +14,11 @@ public class ConfigService
     private readonly string _filePath;
     private readonly ILogger<ConfigService> _logger;
 
-    public ConfigService(ILogger<ConfigService>? logger = null)
+    public ConfigService(ILogger<ConfigService>? logger = null, string? filePath = null)
     {
         _logger = logger ?? NullLogger<ConfigService>.Instance;
         // 存放在 EXE 同级目录
-        _filePath = Path.Combine(AppDomain.CurrentDomain.BaseDirectory, FileName);
+        _filePath = filePath ?? Path.Combine(AppDomain.CurrentDomain.BaseDirectory, FileName);
         LoadConfig();
     }
 
@@ -68,11 +68,11 @@ public class ConfigService
             }
             catch (JsonException ex)
             {
-                _logger.LogWarning(ex, "配置文件 JSON 格式错误，使用默认配置 ConfigPath={ConfigPath}", _filePath);
+                _logger.LogUserWarning(ex, "配置文件格式错误，已使用默认配置：{ConfigPath}", _filePath);
             }
             catch (IOException ex)
             {
-                _logger.LogWarning(ex, "配置文件读取失败，使用默认配置 ConfigPath={ConfigPath}", _filePath);
+                _logger.LogUserWarning(ex, "配置文件读取失败，已使用默认配置：{ConfigPath}", _filePath);
             }
             catch (Exception ex)
             {
@@ -83,7 +83,7 @@ public class ConfigService
         CurrentConfig = new AppConfig();
     }
 
-    public void SaveConfig(AppConfig config)
+    public bool SaveConfig(AppConfig config)
     {
         try
         {
@@ -95,10 +95,12 @@ public class ConfigService
 
             // 更新内存缓存
             CurrentConfig = config;
+            return true;
         }
         catch (Exception ex)
         {
             _logger.LogError(ex, "保存配置失败 ConfigPath={ConfigPath}", _filePath);
+            return false;
         }
     }
 

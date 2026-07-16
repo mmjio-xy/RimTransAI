@@ -135,6 +135,32 @@ public class ScanOrchestratorTests
         }
     }
 
+    [Fact]
+    public void Scan_WhenLoadFoldersIsMalformed_PropagatesFallbackDiagnostic()
+    {
+        var root = CreateTempModRoot();
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(root, "1.5"));
+            File.WriteAllText(Path.Combine(root, "LoadFolders.xml"), "<loadFolders>");
+            var orchestrator = new ScanOrchestrator();
+            var context = new ScanContext(
+                root,
+                "English",
+                "English",
+                new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+                "1.5");
+
+            var result = orchestrator.Scan(context, new Dictionary<string, HashSet<string>>());
+
+            result.Diagnostics.LoadFolderFallbackDueToError.Should().BeTrue();
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     private static string CreateTempModRoot()
     {
         var root = Path.Combine(Path.GetTempPath(), $"rta_orch_{Guid.NewGuid():N}");

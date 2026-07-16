@@ -98,6 +98,45 @@ public class MultiThreadedTranslationServiceTests
         item.Status.Should().Be("等待中");
     }
 
+    [Fact]
+    public async Task ExecuteBatchesAsync_WhenResponseMissesItem_DoesNotCountBatchAsSuccessful()
+    {
+        var item = CreateItem("missing");
+        var batchResult = CreateBatchResult(item);
+        var llmService = new StubLlmService((_, _) =>
+            Task.FromResult(new Dictionary<string, string>()));
+        var logger = new RecordingLogger<MultiThreadedTranslationService>();
+
+        using var concurrencyManager = new ConcurrencyManager(1);
+        using var progressReporter = new ThreadSafeProgressReporter();
+        using var service = new MultiThreadedTranslationService(
+            llmService,
+            update =>
+            {
+                update();
+                return Task.CompletedTask;
+            },
+            logger);
+
+        var successfulBatches = await service.ExecuteBatchesAsync(
+            batchResult,
+            concurrencyManager,
+            progressReporter,
+            "api-key",
+            "https://example.com",
+            "model",
+            "Chinese",
+            480);
+
+        successfulBatches.Should().Be(0);
+        item.Status.Should().Be("未翻译");
+        logger.Records.Any(record =>
+                record.Level == Microsoft.Extensions.Logging.LogLevel.Warning &&
+                record.Properties.TryGetValue("MissingCount", out var missingCount) &&
+                Equals(missingCount, 1))
+            .Should().BeTrue();
+    }
+
     private static TranslationItem CreateItem(string originalText)
     {
         return new TranslationItem

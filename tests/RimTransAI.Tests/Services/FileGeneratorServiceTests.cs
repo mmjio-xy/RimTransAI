@@ -153,4 +153,53 @@ public class FileGeneratorServiceTests : IDisposable
         var outputPath = Path.Combine(_tempDir, "1.5", "Languages", "ChineseSimplified", "DefInjected", "ThingDef", "SubDir", "Buildings.xml");
         File.Exists(outputPath).Should().BeTrue();
     }
+
+    [Fact]
+    public void GenerateFilesDetailed_WhenNodeCannotBeCreated_ReportsPartialSuccess()
+    {
+        var items = new List<TranslationItem>
+        {
+            new()
+            {
+                DefType = "Keyed",
+                Version = "1.5",
+                FilePath = Path.Combine(_tempDir, "1.5", "Languages", "English", "Keyed", "All.xml"),
+                Key = "invalid key with spaces",
+                OriginalText = "Hello",
+                TranslatedText = "你好",
+                Status = "已翻译"
+            }
+        };
+
+        var result = _service.GenerateFilesDetailed(_tempDir, "ChineseSimplified", items);
+
+        result.SuccessfulFileCount.Should().Be(1);
+        result.FailedFileCount.Should().Be(0);
+        result.FailedNodeCount.Should().Be(1);
+        result.IsCompleteSuccess.Should().BeFalse();
+    }
+
+    [Fact]
+    public void GenerateFilesDetailed_WhenBackstoryFieldIsUnsupported_ReportsPartialSuccess()
+    {
+        var items = new List<TranslationItem>
+        {
+            new()
+            {
+                DefType = "BackstoryDef",
+                Version = "1.5",
+                FilePath = Path.Combine(_tempDir, "1.5", "Languages", "English", "Backstories", "Backstories.xml"),
+                Key = "Drone42.unsupported",
+                OriginalText = "Hello",
+                TranslatedText = "你好",
+                Status = "已翻译"
+            }
+        };
+
+        var result = _service.GenerateFilesDetailed(_tempDir, "ChineseSimplified", items);
+
+        result.SuccessfulFileCount.Should().Be(1);
+        result.FailedNodeCount.Should().Be(1);
+        result.IsCompleteSuccess.Should().BeFalse();
+    }
 }

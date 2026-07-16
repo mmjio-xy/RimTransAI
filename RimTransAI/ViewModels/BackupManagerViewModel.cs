@@ -100,6 +100,7 @@ public partial class BackupManagerViewModel : ViewModelBase
         // 检查备份文件是否存在
         if (!backup.FileExists)
         {
+            _logger.LogUserWarning("无法恢复备份：文件不存在 {BackupFile}", Path.GetFileName(backup.FilePath));
             await ShowMessageDialog("无法恢复", "备份文件不存在，可能已被删除或移动。");
             return;
         }
@@ -107,7 +108,7 @@ public partial class BackupManagerViewModel : ViewModelBase
         // 检查是否有当前 Mod 路径
         if (string.IsNullOrEmpty(CurrentModPath))
         {
-            _logger.LogWarning("恢复备份失败：未选择 Mod 文件夹");
+            _logger.LogUserWarning("恢复备份失败：未选择 Mod 文件夹");
             await ShowMessageDialog("无法恢复", "请先在主界面选择要恢复到的 Mod 文件夹");
             return;
         }

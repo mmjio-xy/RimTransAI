@@ -4,6 +4,8 @@ using System.IO;
 using System.Linq;
 using System.Text.RegularExpressions;
 using System.Xml.Linq;
+using Microsoft.Extensions.Logging;
+using Microsoft.Extensions.Logging.Abstractions;
 
 namespace RimTransAI.Services.Scanning;
 
@@ -18,9 +20,19 @@ public sealed class GameLoadOrderPlanner
         string[] RequiredAllOfPackageIds,
         string[] DisallowedAnyOfPackageIds);
 
+    private readonly ILogger<GameLoadOrderPlanner> _logger;
+
+    public GameLoadOrderPlanner(ILogger<GameLoadOrderPlanner>? logger = null)
+    {
+        _logger = logger ?? NullLogger<GameLoadOrderPlanner>.Instance;
+    }
+
+    public bool LastPlanUsedFallbackDueToError { get; private set; }
+
     public IReadOnlyList<LoadFolderPlanEntry> Plan(ScanContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
+        LastPlanUsedFallbackDueToError = false;
         if (!Directory.Exists(context.ModRootPath))
         {
             return [];
@@ -34,7 +46,7 @@ public sealed class GameLoadOrderPlanner
         return PlanFallback(context);
     }
 
-    private static bool TryPlanFromLoadFolders(ScanContext context, out List<LoadFolderPlanEntry> plan)
+    private bool TryPlanFromLoadFolders(ScanContext context, out List<LoadFolderPlanEntry> plan)
     {
         plan = [];
 
@@ -64,7 +76,7 @@ public sealed class GameLoadOrderPlanner
         return plan.Count > 0;
     }
 
-    private static Dictionary<string, List<LoadFolderRule>> ParseLoadFoldersByVersion(string loadFoldersPath)
+    private Dictionary<string, List<LoadFolderRule>> ParseLoadFoldersByVersion(string loadFoldersPath)
     {
         var result = new Dictionary<string, List<LoadFolderRule>>(StringComparer.OrdinalIgnoreCase);
 
@@ -106,8 +118,13 @@ public sealed class GameLoadOrderPlanner
                 }
             }
         }
-        catch
+        catch (Exception ex)
         {
+            LastPlanUsedFallbackDueToError = true;
+            _logger.LogUserWarning(
+                ex,
+                "LoadFolders.xml 解析失败，已回退到目录扫描：{LoadFoldersPath}",
+                loadFoldersPath);
             return [];
         }
 

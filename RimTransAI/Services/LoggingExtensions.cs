@@ -46,6 +46,13 @@ public static class LoggingExtensions
         params object?[] args) =>
         LogUserEvent(logger, LogLevel.Warning, OperationLogLevel.Warning, null, messageTemplate, args);
 
+    public static void LogUserWarning(
+        this ILogger logger,
+        Exception? exception,
+        string messageTemplate,
+        params object?[] args) =>
+        LogUserEvent(logger, LogLevel.Warning, OperationLogLevel.Warning, exception, messageTemplate, args);
+
     public static void LogUserError(
         this ILogger logger,
         Exception? exception,

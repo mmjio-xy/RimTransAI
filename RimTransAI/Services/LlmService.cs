@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.ClientModel;
+using System.Linq;
 using System.Text.Json;
 using System.Threading;
 using System.Threading.Tasks;
@@ -130,6 +131,19 @@ public class LlmService : IDisposable
                 "LLM 翻译结果 ParsedCount={ParsedCount} RequestedCount={RequestedCount}",
                 result.Count,
                 sourceTexts.Count);
+
+            var missingCount = sourceTexts.Count(pair =>
+                !result.TryGetValue(pair.Key, out var translatedText) ||
+                string.IsNullOrWhiteSpace(translatedText));
+            if (missingCount > 0)
+            {
+                _logger.LogWarning(
+                    "LLM 返回结果不完整 RequestedCount={RequestedCount} ReturnedCount={ReturnedCount} MissingCount={MissingCount}",
+                    sourceTexts.Count,
+                    result.Count,
+                    missingCount);
+            }
+
             return result;
         }
         catch (OperationCanceledException) when (!cancellationToken.IsCancellationRequested && timeoutCts.IsCancellationRequested)

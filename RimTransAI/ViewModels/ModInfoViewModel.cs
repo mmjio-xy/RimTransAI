@@ -10,6 +10,7 @@ using CommunityToolkit.Mvvm.ComponentModel;
 using CommunityToolkit.Mvvm.Input;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Logging.Abstractions;
+using RimTransAI.Services;
 using RimTransAI.Models;
 
 namespace RimTransAI.ViewModels;
@@ -165,7 +166,7 @@ public partial class ModInfoViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "打开 Mod 链接失败 Url={Url}", ResolvedUrl);
+            _logger.LogUserWarning(ex, "打开 Mod 链接失败：{Url}", ResolvedUrl);
         }
     }
     
@@ -210,7 +211,7 @@ public partial class ModInfoViewModel : ViewModelBase
     {
         if (string.IsNullOrEmpty(FolderPath) || !System.IO.Directory.Exists(FolderPath))
         {
-            _logger.LogWarning("Mod 路径无效 FolderPath={FolderPath}", FolderPath);
+            _logger.LogUserWarning("Mod 路径无效：{FolderPath}", FolderPath);
             return;
         }
 
@@ -225,7 +226,7 @@ public partial class ModInfoViewModel : ViewModelBase
         }
         catch (Exception ex)
         {
-            _logger.LogWarning(ex, "打开 Mod 文件夹失败 FolderPath={FolderPath}", FolderPath);
+            _logger.LogUserWarning(ex, "打开 Mod 文件夹失败：{FolderPath}", FolderPath);
         }
     }
 }

@@ -23,6 +23,7 @@ public class ModParserService
     private readonly ILogger<ModParserService> _logger;
     private readonly ILoggerFactory _loggerFactory;
     private Dictionary<string, HashSet<string>>? _reflectionMap;
+    public ScanDiagnostics LastScanDiagnostics { get; private set; } = new();
 
     // 构造函数：必须提供反射分析器和配置服务
     public ModParserService(
@@ -36,6 +37,8 @@ public class ModParserService
         _logger = logger ?? NullLogger<ModParserService>.Instance;
         _loggerFactory = loggerFactory ?? NullLoggerFactory.Instance;
         _scanOrchestrator = new ScanOrchestrator(
+            loadOrderPlanner: new GameLoadOrderPlanner(
+                _loggerFactory.CreateLogger<GameLoadOrderPlanner>()),
             defFieldExtractionEngine: new DefFieldExtractionEngine(
                 logger: _loggerFactory.CreateLogger<DefFieldExtractionEngine>()));
     }
@@ -43,9 +46,11 @@ public class ModParserService
     public List<TranslationItem> ScanModFolder(string modPath)
     {
         var items = new List<TranslationItem>();
+        LastScanDiagnostics = new ScanDiagnostics();
 
         if (!Directory.Exists(modPath))
         {
+            LastScanDiagnostics.ExtractionErrorCount = 1;
             _logger.ErrorMessage($"Mod 目录不存在: {modPath}");
             return items;
         }
@@ -61,6 +66,7 @@ public class ModParserService
 
         if (_reflectionMap == null || _reflectionMap.Count == 0)
         {
+            LastScanDiagnostics.ExtractionErrorCount = 1;
             _logger.ErrorMessage("========================================");
             _logger.ErrorMessage("错误：无法加载核心类型定义");
             _logger.ErrorMessage("可能的原因：");
@@ -87,10 +93,12 @@ public class ModParserService
         _logger.InfoMessage("步骤 3/4: 收集 XML 源文件...");
         _logger.InfoMessage("步骤 4/4: 提取可翻译字段...");
         var scanResult = _scanOrchestrator.Scan(context, _reflectionMap);
+        LastScanDiagnostics = scanResult.Diagnostics;
         items.AddRange(scanResult.Items);
 
         _logger.InfoMessage(
             $"阶段 1/3 目录规划: LoadFolders={scanResult.Diagnostics.LoadFolderCount}, " +
+            $"FallbackDueToError={scanResult.Diagnostics.LoadFolderFallbackDueToError}, " +
             $"LanguageDirs={scanResult.Diagnostics.LanguageDirectoryCount}");
         _logger.InfoMessage(
             $"阶段 2/3 文件收集: Defs={scanResult.Diagnostics.DefFileCount}, " +

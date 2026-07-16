@@ -1,5 +1,6 @@
 using FluentAssertions;
 using RimTransAI.Services.Scanning;
+using RimTransAI.Tests.Helpers;
 using Xunit;
 
 namespace RimTransAI.Tests.Services.Scanning;
@@ -215,6 +216,37 @@ public class GameLoadOrderPlannerTests
             var plan = planner.Plan(context);
 
             plan.Select(x => x.RelativePath).Should().ContainSingle().Which.Should().Be("Gated");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Plan_WithMalformedLoadFolders_LogsWarningAndUsesFallback()
+    {
+        var root = CreateTempModRoot();
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(root, "1.5"));
+            File.WriteAllText(Path.Combine(root, "LoadFolders.xml"), "<loadFolders>");
+            var logger = new RecordingLogger<GameLoadOrderPlanner>();
+            var planner = new GameLoadOrderPlanner(logger);
+            var context = new ScanContext(
+                root,
+                "English",
+                "English",
+                new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+                "1.5");
+
+            var plan = planner.Plan(context);
+
+            planner.LastPlanUsedFallbackDueToError.Should().BeTrue();
+            plan.Should().NotBeEmpty();
+            logger.Records.Should().Contain(record =>
+                record.Level == Microsoft.Extensions.Logging.LogLevel.Warning &&
+                record.Message.Contains("已回退到目录扫描", StringComparison.Ordinal));
         }
         finally
         {

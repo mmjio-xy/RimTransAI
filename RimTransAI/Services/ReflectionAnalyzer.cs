@@ -236,8 +236,13 @@ public class ReflectionAnalyzer
                     CollectTranslatableFields(currentType, translatableFields);
                 }
             }
-            catch
+            catch (Exception ex)
             {
+                _logger.LogDebug(
+                    ex,
+                    "解析基类失败 TypeName={TypeName} BaseTypeName={BaseTypeName}",
+                    type.FullName,
+                    currentType?.BaseType?.FullName);
                 break;
             }
         }
@@ -499,8 +504,9 @@ public class ReflectionAnalyzer
             }
             return typeRef.Resolve();
         }
-        catch
+        catch (Exception ex)
         {
+            _logger.LogDebug(ex, "解析类型引用失败 TypeName={TypeName}", fullTypeName);
             return null;
         }
     }

@@ -97,6 +97,7 @@ public sealed class DefFieldExtractionEngine
                 if (parseResult.HitTraversalLimit)
                 {
                     _logger.LogWarning("Defs 文件触发结构遍历保护 SourcePath={SourcePath}", source.FullPath);
+                    diagnostics.ErrorCount++;
                 }
 
                 foreach (var definition in parseResult.Definitions.OrderBy(x => x.Order))
