@@ -314,7 +314,7 @@ public partial class SettingsViewModel : ViewModelBase
         App.SetTheme(newTheme);
         LoggingBootstrap.SetApiKey(newConfig.ApiKey);
         LoggingBootstrap.SetDebugMode(DebugMode);
-        _logger.LogInformation(
+        _logger.LogUserSuccess(
             "设置已保存 Theme={Theme} DebugEnabled={DebugEnabled} MultiThreadEnabled={MultiThreadEnabled} MaxThreads={MaxThreads}",
             newTheme,
             DebugMode,

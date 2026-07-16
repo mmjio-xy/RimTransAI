@@ -1,5 +1,6 @@
 using FluentAssertions;
 using RimTransAI.Services;
+using Serilog;
 using Xunit;
 
 namespace RimTransAI.Tests.Services;
@@ -29,40 +30,77 @@ public class LoggingBootstrapTests
     }
 
     [Fact]
-    public void SetDebugMode_WhenEnabled_AllowsDebugLogs()
+    public void ApiKeyRedactor_RedactsCurrentAndPreviousKeys()
     {
-        LoggingBootstrap.Initialize();
-        LoggingBootstrap.SetDebugMode(true);
+        var result = ApiKeyRedactor.Redact(
+            "old-key and new-key",
+            ["old-key", "new-key"]);
 
-        var operation = () => Serilog.Log
-            .ForContext<LoggingBootstrapTests>()
-            .Debug("Test debug message");
-
-        operation.Should().NotThrow();
+        result.Should().Be(
+            $"{ApiKeyRedactor.RedactedValue} and {ApiKeyRedactor.RedactedValue}");
     }
 
     [Fact]
-    public void SetDebugMode_WhenDisabled_FiltersDebugLogs()
+    public void DebugDisabled_DoesNotCreateLogsDirectoryOrFile()
     {
-        LoggingBootstrap.Initialize();
-        LoggingBootstrap.SetDebugMode(false);
+        var logsDirectory = CreateUnusedLogsDirectoryPath();
+        try
+        {
+            LoggingBootstrap.Shutdown();
+            LoggingBootstrap.Initialize(logsDirectory);
+            LoggingBootstrap.SetDebugMode(false);
 
-        var operation = () => Serilog.Log
-            .ForContext<LoggingBootstrapTests>()
-            .Debug("Test debug message");
+            Log.ForContext<LoggingBootstrapTests>().Information("ordinary event");
+            LoggingBootstrap.Shutdown();
 
-        operation.Should().NotThrow();
+            Directory.Exists(logsDirectory).Should().BeFalse();
+        }
+        finally
+        {
+            LoggingBootstrap.Shutdown();
+            DeleteDirectoryIfPresent(logsDirectory);
+        }
     }
 
     [Fact]
-    public void GetLogFilePath_AfterInitialize_ReturnsPath()
+    public void DebugEnabled_CreatesFileAndFlushesDebugEvents()
     {
-        LoggingBootstrap.Initialize();
+        var logsDirectory = CreateUnusedLogsDirectoryPath();
+        try
+        {
+            LoggingBootstrap.Shutdown();
+            LoggingBootstrap.Initialize(logsDirectory);
+            LoggingBootstrap.SetApiKey("secret-key");
+            LoggingBootstrap.SetDebugMode(true);
 
-        var path = LoggingBootstrap.GetLogFilePath();
+            Log.ForContext<LoggingBootstrapTests>()
+                .Debug("debug event with secret-key");
+            var path = LoggingBootstrap.GetLogFilePath();
+            LoggingBootstrap.Shutdown();
 
-        path.Should().NotBeNullOrEmpty();
-        path.Should().Contain("RimTransAI-");
-        path.Should().EndWith(".log");
+            path.Should().NotBeNullOrEmpty();
+            File.Exists(path).Should().BeTrue();
+            var content = File.ReadAllText(path!);
+            content.Should().Contain("debug event");
+            content.Should().Contain(ApiKeyRedactor.RedactedValue);
+            content.Should().NotContain("secret-key");
+        }
+        finally
+        {
+            LoggingBootstrap.Shutdown();
+            DeleteDirectoryIfPresent(logsDirectory);
+        }
+    }
+
+    private static string CreateUnusedLogsDirectoryPath() =>
+        Path.Combine(Path.GetTempPath(), $"RimTransAI_Logging_{Guid.NewGuid():N}", "Logs");
+
+    private static void DeleteDirectoryIfPresent(string logsDirectory)
+    {
+        var root = Directory.GetParent(logsDirectory)?.FullName;
+        if (root != null && Directory.Exists(root))
+        {
+            Directory.Delete(root, recursive: true);
+        }
     }
 }

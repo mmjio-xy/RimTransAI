@@ -4,6 +4,7 @@ using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
 using Avalonia.Markup.Xaml;
 using Avalonia.Styling;
+using Avalonia.Threading;
 using Microsoft.Extensions.DependencyInjection;
 using Microsoft.Extensions.Logging;
 using RimTransAI.Services;
@@ -55,6 +56,8 @@ public partial class App : Application
 
             Services = collection.BuildServiceProvider();
             _logger = Services.GetRequiredService<ILogger<App>>();
+            var operationLogBuffer = Services.GetRequiredService<OperationLogBuffer>();
+            LoggingBootstrap.AttachOperationLogBuffer(operationLogBuffer, DispatchToUiThread);
             _logger.LogInformation("依赖注入配置完成");
 
             // 2. 启动时应用保存的主题
@@ -132,6 +135,17 @@ public partial class App : Application
         };
 
         _globalExceptionHandlersRegistered = true;
+    }
+
+    private static void DispatchToUiThread(Action action)
+    {
+        if (Dispatcher.UIThread.CheckAccess())
+        {
+            action();
+            return;
+        }
+
+        Dispatcher.UIThread.Post(action);
     }
 
     // === 静态切换主题方法 ===

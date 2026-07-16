@@ -19,19 +19,22 @@ public class LoggingExtensionsTests
         logger.InfoMessage("info");
         logger.WarningMessage("warning");
         logger.ErrorMessage("error", exception);
+        logger.LogUserSuccess("saved {Count}", 3);
 
         logger.Records.Select(x => x.Level).Should().Equal(
             LogLevel.Trace,
             LogLevel.Debug,
             LogLevel.Information,
             LogLevel.Warning,
-            LogLevel.Error);
+            LogLevel.Error,
+            LogLevel.Information);
         logger.Records.Select(x => x.Message).Should().Equal(
             "trace",
             "debug",
             "info",
             "warning",
-            "error");
-        logger.Records.Last().Exception.Should().BeSameAs(exception);
+            "error",
+            "saved 3");
+        logger.Records.ElementAt(4).Exception.Should().BeSameAs(exception);
     }
 }

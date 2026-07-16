@@ -20,6 +20,7 @@ public sealed class OperationLogBuffer
     public int Capacity { get; }
     public ReadOnlyObservableCollection<OperationLogEntry> Entries { get; }
     public string LatestMessage => _entries.Count == 0 ? string.Empty : _entries[^1].Message;
+    public event EventHandler<OperationLogEntry>? EntryAdded;
 
     public void Replace(string? text)
     {
@@ -28,6 +29,14 @@ public sealed class OperationLogBuffer
     }
 
     public void Append(string? text)
+    {
+        Append(text, level: null, timestamp: null);
+    }
+
+    public void Append(
+        string? text,
+        OperationLogLevel? level,
+        DateTimeOffset? timestamp = null)
     {
         if (string.IsNullOrWhiteSpace(text))
             return;
@@ -38,11 +47,14 @@ public sealed class OperationLogBuffer
 
         foreach (var line in lines)
         {
-            _entries.Add(OperationLogEntry.Create(line));
+            var entry = OperationLogEntry.Create(line, timestamp, level);
+            _entries.Add(entry);
             while (_entries.Count > Capacity)
             {
                 _entries.RemoveAt(0);
             }
+
+            EntryAdded?.Invoke(this, entry);
         }
     }
 }

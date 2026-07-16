@@ -34,6 +34,27 @@ public class OperationLogBufferTests
     }
 
     [Fact]
+    public void Append_CancelledMarker_IsWarningInsteadOfError()
+    {
+        var buffer = new OperationLogBuffer();
+
+        buffer.Append("✗ 批次已取消");
+
+        buffer.Entries.Should().ContainSingle();
+        buffer.Entries[0].Level.Should().Be(OperationLogLevel.Warning);
+    }
+
+    [Fact]
+    public void Append_WithExplicitLevel_DoesNotUseKeywordClassification()
+    {
+        var buffer = new OperationLogBuffer();
+
+        buffer.Append("任务完成", OperationLogLevel.Info);
+
+        buffer.Entries[0].Level.Should().Be(OperationLogLevel.Info);
+    }
+
+    [Fact]
     public void Constructor_WithInvalidCapacity_Throws()
     {
         var operation = () => new OperationLogBuffer(capacity: 0);

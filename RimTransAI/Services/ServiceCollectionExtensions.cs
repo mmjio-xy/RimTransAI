@@ -21,6 +21,7 @@ public static class ServiceCollectionExtensions
         services.AddSingleton<IconCatalogService>();
         services.AddSingleton<WorkspaceService>();
         services.AddSingleton<BackupService>();
+        services.AddSingleton<OperationLogBuffer>();
 
         return services;
     }
