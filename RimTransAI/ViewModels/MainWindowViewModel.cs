@@ -885,30 +885,32 @@ public partial class MainWindowViewModel : ViewModelBase
                     ? $"保存成功！已在 Languages/{targetLang} 下生成 {count} 个文件。"
                     : $"部分保存成功：生成 {count} 个文件，另有失败项，请查看日志。";
 
-            string? backupPath = null;
-            if (count > 0)
+            IReadOnlyList<string> backupPaths = [];
+            var backupVersionCount = generationResult.SuccessfulVersions.Count;
+            var autoBackupEnabled = _configService.CurrentConfig.EnableAutoBackup;
+            if (count > 0 && backupVersionCount > 0)
             {
-                backupPath = await Task.Run(() =>
+                backupPaths = await Task.Run(() =>
                 {
-                    string version = string.IsNullOrEmpty(SelectedVersion) || SelectedVersion == "全部"
-                        ? ""
-                        : SelectedVersion;
-
                     string packageId = _currentPackageId ?? "UnknownMod";
                     string modName = _currentModName ?? SelectedMod.Name;
 
-                    return _backupService.BackupTranslationFolder(
+                    return _backupService.BackupTranslationFolders(
                         _currentModPath,
                         modName,
                         packageId,
-                        version,
+                        generationResult.SuccessfulVersions,
                         targetLang);
                 });
             }
 
-            if (backupPath != null)
+            if (backupPaths.Count > 0)
             {
-                LogOutput += "\n已自动创建备份。";
+                LogOutput += $"\n已自动创建 {backupPaths.Count} 个版本备份。";
+            }
+            else if (count > 0 && autoBackupEnabled)
+            {
+                LogOutput += "\n自动备份未创建，请查看日志确认目标目录。";
             }
 
             if (count == 0 && generationResult.IsCompleteSuccess)
@@ -917,10 +919,27 @@ public partial class MainWindowViewModel : ViewModelBase
             }
             else if (generationResult.IsCompleteSuccess)
             {
-                _logger.LogUserSuccess(
-                    "翻译文件生成完成，共生成 {GeneratedFileCount} 个文件，自动备份：{BackupCreated}",
-                    count,
-                    backupPath != null);
+                if (!autoBackupEnabled)
+                {
+                    _logger.LogUserSuccess(
+                        "翻译文件生成完成，共生成 {GeneratedFileCount} 个文件；自动备份未启用",
+                        count);
+                }
+                else if (backupPaths.Count == backupVersionCount)
+                {
+                    _logger.LogUserSuccess(
+                        "翻译文件生成完成，共生成 {GeneratedFileCount} 个文件；已创建 {BackupCount} 个版本备份",
+                        count,
+                        backupPaths.Count);
+                }
+                else
+                {
+                    _logger.LogUserWarning(
+                        "翻译文件生成完成，共生成 {GeneratedFileCount} 个文件；自动备份仅创建 {CreatedBackupCount}/{ExpectedBackupCount} 个",
+                        count,
+                        backupPaths.Count,
+                        backupVersionCount);
+                }
             }
             else
             {

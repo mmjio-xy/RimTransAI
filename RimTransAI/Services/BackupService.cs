@@ -141,6 +141,71 @@ public class BackupService
             return null;
         }
 
+        return BackupTranslationFolderCore(
+            modRootPath,
+            modName,
+            packageId,
+            version,
+            targetLang,
+            config);
+    }
+
+    /// <summary>
+    /// 按本次实际生成成功的版本批量创建备份。
+    /// </summary>
+    public IReadOnlyList<string> BackupTranslationFolders(
+        string modRootPath,
+        string modName,
+        string packageId,
+        IEnumerable<string> versions,
+        string targetLang)
+    {
+        ArgumentNullException.ThrowIfNull(versions);
+
+        var distinctVersions = versions
+            .Select(version => version?.Trim() ?? string.Empty)
+            .Distinct(StringComparer.OrdinalIgnoreCase)
+            .ToArray();
+        if (distinctVersions.Length == 0)
+        {
+            return [];
+        }
+
+        var config = _configService.CurrentConfig;
+        if (!config.EnableAutoBackup)
+        {
+            _logger.LogInformation("自动备份已禁用，跳过备份");
+            return [];
+        }
+
+        var backupPaths = new List<string>(distinctVersions.Length);
+        foreach (var version in distinctVersions)
+        {
+            var backupPath = BackupTranslationFolderCore(
+                modRootPath,
+                modName,
+                packageId,
+                version,
+                targetLang,
+                config);
+            if (backupPath != null)
+            {
+                backupPaths.Add(backupPath);
+            }
+        }
+
+        return backupPaths;
+    }
+
+    private string? BackupTranslationFolderCore(
+        string modRootPath,
+        string modName,
+        string packageId,
+        string version,
+        string targetLang,
+        AppConfig config)
+    {
+
         // 1. 确定翻译文件夹路径
         string versionPath = string.IsNullOrEmpty(version) ? modRootPath : Path.Combine(modRootPath, version);
         string languagesDir = Path.Combine(versionPath, "Languages");

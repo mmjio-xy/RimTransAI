@@ -12,7 +12,8 @@ namespace RimTransAI.Services;
 public sealed record FileGenerationResult(
     int SuccessfulFileCount,
     int FailedFileCount,
-    int FailedNodeCount)
+    int FailedNodeCount,
+    IReadOnlyList<string> SuccessfulVersions)
 {
     public bool IsCompleteSuccess => FailedFileCount == 0 && FailedNodeCount == 0;
 }
@@ -42,7 +43,7 @@ public class FileGeneratorService
             .ToList();
         if (validItems.Count == 0)
         {
-            return new FileGenerationResult(0, 0, 0);
+            return new FileGenerationResult(0, 0, 0, []);
         }
 
         var groupedByTargetPath = validItems
@@ -58,6 +59,7 @@ public class FileGeneratorService
         var successfulFileCount = 0;
         var failedFileCount = 0;
         var failedNodeCount = 0;
+        var successfulVersions = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
         foreach (var group in groupedByTargetPath)
         {
             var targetPath = group.Key;
@@ -93,6 +95,10 @@ public class FileGeneratorService
 
                 doc.Save(targetPath);
                 successfulFileCount++;
+                foreach (var version in groupItems.Select(x => x.Version ?? string.Empty))
+                {
+                    successfulVersions.Add(version);
+                }
                 _logger.LogDebug("翻译文件已保存 TargetPath={TargetPath}", targetPath);
             }
             catch (Exception ex)
@@ -102,7 +108,11 @@ public class FileGeneratorService
             }
         }
 
-        return new FileGenerationResult(successfulFileCount, failedFileCount, failedNodeCount);
+        return new FileGenerationResult(
+            successfulFileCount,
+            failedFileCount,
+            failedNodeCount,
+            successfulVersions.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToArray());
     }
 
     private string DetermineOutputPath(string modRoot, string originalPath, string defType, string version, string targetLang)

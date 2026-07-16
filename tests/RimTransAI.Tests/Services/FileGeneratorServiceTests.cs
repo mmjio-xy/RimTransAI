@@ -202,4 +202,37 @@ public class FileGeneratorServiceTests : IDisposable
         result.FailedNodeCount.Should().Be(1);
         result.IsCompleteSuccess.Should().BeFalse();
     }
+
+    [Fact]
+    public void GenerateFilesDetailed_WithMultipleVersions_ReportsSuccessfulVersions()
+    {
+        var items = new[]
+        {
+            new TranslationItem
+            {
+                DefType = "Keyed",
+                Version = "1.5",
+                FilePath = Path.Combine(_tempDir, "1.5", "Languages", "English", "Keyed", "One.xml"),
+                Key = "One",
+                OriginalText = "One",
+                TranslatedText = "一",
+                Status = "已翻译"
+            },
+            new TranslationItem
+            {
+                DefType = "Keyed",
+                Version = "1.6",
+                FilePath = Path.Combine(_tempDir, "1.6", "Languages", "English", "Keyed", "Two.xml"),
+                Key = "Two",
+                OriginalText = "Two",
+                TranslatedText = "二",
+                Status = "已翻译"
+            }
+        };
+
+        var result = _service.GenerateFilesDetailed(_tempDir, "ChineseSimplified", items);
+
+        result.SuccessfulFileCount.Should().Be(2);
+        result.SuccessfulVersions.Should().Equal("1.5", "1.6");
+    }
 }

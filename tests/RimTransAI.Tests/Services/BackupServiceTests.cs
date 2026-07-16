@@ -80,6 +80,45 @@ public class BackupServiceTests : IDisposable
             record.Message.Contains("元数据保存失败", StringComparison.Ordinal));
     }
 
+    [Fact]
+    public void BackupTranslationFolders_WhenMultipleVersionsExist_CreatesEveryVersionBackup()
+    {
+        var backupDirectory = Path.Combine(_tempDirectory, "multi-backups");
+        var modRoot = Path.Combine(_tempDirectory, "multi-version-mod");
+        Directory.CreateDirectory(backupDirectory);
+        foreach (var version in new[] { "1.5", "1.6" })
+        {
+            var languageDirectory = Path.Combine(
+                modRoot,
+                version,
+                "Languages",
+                "ChineseSimplified");
+            Directory.CreateDirectory(languageDirectory);
+            File.WriteAllText(Path.Combine(languageDirectory, "Main.xml"), "<LanguageData />");
+        }
+
+        var configService = new ConfigService(
+            filePath: Path.Combine(_tempDirectory, "settings-multi-version.json"));
+        configService.SaveConfig(new AppConfig
+        {
+            BackupDirectory = backupDirectory,
+            EnableAutoBackup = true
+        }).Should().BeTrue();
+        var service = new BackupService(configService);
+
+        var backupPaths = service.BackupTranslationFolders(
+            modRoot,
+            "Test Mod",
+            "test.package",
+            ["1.5", "1.6"],
+            "ChineseSimplified");
+
+        backupPaths.Should().HaveCount(2);
+        backupPaths.Should().OnlyContain(path => File.Exists(path));
+        service.LoadMetadata().Entries.Select(entry => entry.ModVersion)
+            .Should().BeEquivalentTo("1.5", "1.6");
+    }
+
     public void Dispose()
     {
         if (Directory.Exists(_tempDirectory))
