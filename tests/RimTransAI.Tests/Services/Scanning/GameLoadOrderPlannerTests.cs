@@ -254,6 +254,40 @@ public class GameLoadOrderPlannerTests
         }
     }
 
+    [Fact]
+    public void Plan_WithLoadFolders_LoadsFolderGatedOnUnknownOptionalMod()
+    {
+        var root = CreateTempModRoot();
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(root, "Optional"));
+
+            File.WriteAllText(Path.Combine(root, "LoadFolders.xml"), """
+                <loadFolders>
+                  <v1.5>
+                    <li IfModActive="some.optional.mod">Optional</li>
+                  </v1.5>
+                </loadFolders>
+                """);
+
+            var planner = new GameLoadOrderPlanner();
+            var context = new ScanContext(
+                root,
+                "English",
+                "English",
+                new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+                "1.5");
+
+            var plan = planner.Plan(context);
+
+            plan.Select(x => x.RelativePath).Should().Contain("Optional");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     private static string CreateTempModRoot()
     {
         var root = Path.Combine(Path.GetTempPath(), $"rta_scan_{Guid.NewGuid():N}");

@@ -225,22 +225,18 @@ public sealed class GameLoadOrderPlanner
 
     private static bool ShouldLoad(LoadFolderRule rule, HashSet<string> activePackageIds)
     {
-        var requiredAnyMatched = rule.RequiredAnyOfPackageIds.Length == 0 ||
-                                 rule.RequiredAnyOfPackageIds.Any(activePackageIds.Contains);
-        if (!requiredAnyMatched)
+        // IfModNotActive：仅当被排除的 Mod 确定处于激活状态时跳过。
+        if (rule.DisallowedAnyOfPackageIds.Length > 0 &&
+            rule.DisallowedAnyOfPackageIds.Any(activePackageIds.Contains))
         {
             return false;
         }
 
-        var requiredAllMatched = rule.RequiredAllOfPackageIds.Length == 0 ||
-                                 rule.RequiredAllOfPackageIds.All(activePackageIds.Contains);
-        if (!requiredAllMatched)
-        {
-            return false;
-        }
-
-        return rule.DisallowedAnyOfPackageIds.Length == 0 ||
-               rule.DisallowedAnyOfPackageIds.All(x => !activePackageIds.Contains(x));
+        // IfModActive / IfModActiveAll：采取“失败即加载”。
+        // 这里的激活 Mod 集合只是尽力猜测（Core + 自身 + 声明的依赖），
+        // 缺少某个包 id 并不能证明该 Mod 未激活；为保证翻译提取的完整性，
+        // 条件目录默认加载，避免漏掉可选的集成内容。
+        return true;
     }
 
     private static HashSet<string> BuildNormalizedActivePackageSet(IEnumerable<string> packageIds)
