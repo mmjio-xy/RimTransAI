@@ -512,6 +512,32 @@ public class DefFieldExtractionEngineTests
         }
     }
 
+    [Fact]
+    public void Extract_KeyedWithNestedElement_ConcatenatesText()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            var keyedFile = Path.Combine(root, "Keyed.xml");
+            File.WriteAllText(keyedFile, "<LanguageData><Greeting>Hello <b>World</b></Greeting></LanguageData>");
+
+            var sources = new XmlSourceCollection();
+            sources.KeyedFiles.Add(new XmlSourceFile(keyedFile, "Languages/English/Keyed/Keyed.xml", "1.5", "Keyed", 0));
+
+            var engine = new DefFieldExtractionEngine();
+            var result = engine.Extract(
+                new ScanContext(root, "English", "English", [], "1.5"),
+                sources,
+                new Dictionary<string, HashSet<string>>());
+
+            result.Should().ContainSingle(x => x.Key == "Greeting" && x.OriginalText == "Hello World");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     private static string CreateTempRoot()
     {
         var root = Path.Combine(Path.GetTempPath(), $"rta_extract_{Guid.NewGuid():N}");

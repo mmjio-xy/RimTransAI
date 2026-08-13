@@ -307,11 +307,6 @@ public sealed class DefFieldExtractionEngine
                 var seenKeysInFile = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
                 foreach (var element in doc.Root.Elements())
                 {
-                    if (element.HasElements)
-                    {
-                        continue;
-                    }
-
                     var key = element.Name.LocalName;
                     if (!seenKeysInFile.Add(key))
                     {
