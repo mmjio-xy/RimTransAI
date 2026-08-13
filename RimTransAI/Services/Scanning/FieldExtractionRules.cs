@@ -264,4 +264,6 @@ public static class ExtractionReasonCodes
     public const string BackstoryLegacy = "Backstories.Legacy";
 
     public const string KeyedLeaf = "Keyed.Leaf";
+
+    public const string StringsLeaf = "Strings.Leaf";
 }

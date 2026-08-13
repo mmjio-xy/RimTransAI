@@ -308,4 +308,55 @@ public class FileGeneratorServiceTests : IDisposable
         result.DeletedFileCount.Should().Be(1);
         result.SuccessfulVersions.Should().ContainSingle().Which.Should().Be("1.5");
     }
+
+    [Fact]
+    public void GenerateFiles_StringsItems_WritesTxtFileWithLinesInOrder()
+    {
+        // Arrange（故意乱序，验证按行号排序写回）
+        var sourcePath = Path.Combine(_tempDir, "1.5", "Languages", "English", "Strings", "Names", "Animal_Male.txt");
+        var items = new List<TranslationItem>
+        {
+            new()
+            {
+                DefType = "Strings",
+                Version = "1.5",
+                FilePath = sourcePath,
+                Key = "Names/Animal_Male.2",
+                OriginalText = "Fox",
+                TranslatedText = "狐",
+                Status = "已翻译"
+            },
+            new()
+            {
+                DefType = "Strings",
+                Version = "1.5",
+                FilePath = sourcePath,
+                Key = "Names/Animal_Male.0",
+                OriginalText = "Bear",
+                TranslatedText = "熊",
+                Status = "已翻译"
+            },
+            new()
+            {
+                DefType = "Strings",
+                Version = "1.5",
+                FilePath = sourcePath,
+                Key = "Names/Animal_Male.1",
+                OriginalText = "Wolf",
+                TranslatedText = "狼",
+                Status = "已翻译"
+            }
+        };
+
+        // Act
+        var result = _service.GenerateFiles(_tempDir, "ChineseSimplified", items);
+
+        // Assert
+        result.Should().Be(1);
+        var outputPath = Path.Combine(_tempDir, "1.5", "Languages", "ChineseSimplified", "Strings", "Names", "Animal_Male.txt");
+        File.Exists(outputPath).Should().BeTrue();
+
+        var lines = File.ReadAllLines(outputPath);
+        lines.Should().Equal("熊", "狼", "狐");
+    }
 }

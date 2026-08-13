@@ -443,6 +443,41 @@ public class DefFieldExtractionEngineTests
         }
     }
 
+    [Fact]
+    public void Extract_StringsFile_ProducesOneItemPerLine()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            var stringsFile = Path.Combine(root, "Animal_Male.txt");
+            File.WriteAllText(stringsFile, "Bear\nWolf\n\nTODO\nFox");
+
+            var sources = new XmlSourceCollection();
+            sources.StringFiles.Add(new XmlSourceFile(
+                stringsFile,
+                "Languages/English/Strings/Names/Animal_Male.txt",
+                "1.5",
+                "Strings",
+                0));
+
+            var engine = new DefFieldExtractionEngine();
+            var result = engine.Extract(
+                new ScanContext(root, "English", "English", [], "1.5"),
+                sources,
+                new Dictionary<string, HashSet<string>>());
+
+            result.Should().Contain(x => x.Key == "Names/Animal_Male.0" && x.OriginalText == "Bear" && x.DefType == "Strings");
+            result.Should().Contain(x => x.Key == "Names/Animal_Male.1" && x.OriginalText == "Wolf");
+            result.Should().Contain(x => x.Key == "Names/Animal_Male.4" && x.OriginalText == "Fox");
+            result.Should().NotContain(x => x.OriginalText == "TODO");
+            result.Should().OnlyContain(x => x.ExtractionReasonCode == ExtractionReasonCodes.StringsLeaf);
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     private static string CreateTempRoot()
     {
         var root = Path.Combine(Path.GetTempPath(), $"rta_extract_{Guid.NewGuid():N}");

@@ -103,9 +103,8 @@ public class FileGeneratorService
 
                 var isBackstoryFile = groupItems.All(x =>
                     x.DefType.Equals("BackstoryDef", StringComparison.OrdinalIgnoreCase));
-                var doc = isBackstoryFile
-                    ? BuildBackstoryDocument(groupItems, () => failedNodeCount++)
-                    : BuildLanguageDataDocument(groupItems, () => failedNodeCount++);
+                var isStringsFile = groupItems.All(x =>
+                    x.DefType.Equals("Strings", StringComparison.OrdinalIgnoreCase));
 
                 var dir = Path.GetDirectoryName(targetPath);
                 if (!string.IsNullOrWhiteSpace(dir) && !Directory.Exists(dir))
@@ -122,7 +121,22 @@ public class FileGeneratorService
                     }
                 }
 
-                doc.Save(targetPath);
+                if (isStringsFile)
+                {
+                    var lines = groupItems
+                        .OrderBy(x => ParseStringsLineIndex(x.Key))
+                        .Select(x => x.TranslatedText)
+                        .ToList();
+                    File.WriteAllLines(targetPath, lines);
+                }
+                else
+                {
+                    var doc = isBackstoryFile
+                        ? BuildBackstoryDocument(groupItems, () => failedNodeCount++)
+                        : BuildLanguageDataDocument(groupItems, () => failedNodeCount++);
+                    doc.Save(targetPath);
+                }
+
                 successfulFileCount++;
                 foreach (var version in groupItems.Select(x => x.Version ?? string.Empty))
                 {
@@ -158,6 +172,15 @@ public class FileGeneratorService
         var normalizedPath = (originalPath ?? string.Empty)
             .Replace('\\', Path.DirectorySeparatorChar)
             .Replace('/', Path.DirectorySeparatorChar);
+
+        // 处理 Strings（名称池等 .txt 文件，保持相对子目录结构）
+        var stringsPattern = $"{Path.DirectorySeparatorChar}Strings{Path.DirectorySeparatorChar}";
+        var stringsFolderIndex = normalizedPath.LastIndexOf(stringsPattern, StringComparison.OrdinalIgnoreCase);
+        if (stringsFolderIndex != -1)
+        {
+            var stringsRelative = normalizedPath[(stringsFolderIndex + stringsPattern.Length)..];
+            return Path.Combine(contentRoot, "Languages", targetLang, "Strings", stringsRelative);
+        }
 
         // 处理 Keyed/CodeLinked
         var keyedPattern = $"{Path.DirectorySeparatorChar}Keyed{Path.DirectorySeparatorChar}";
@@ -377,5 +400,17 @@ public class FileGeneratorService
         }
 
         return string.Empty;
+    }
+
+    private static int ParseStringsLineIndex(string key)
+    {
+        var lastDot = key.LastIndexOf('.');
+        if (lastDot >= 0 && lastDot < key.Length - 1 &&
+            int.TryParse(key.Substring(lastDot + 1), out var index))
+        {
+            return index;
+        }
+
+        return int.MaxValue;
     }
 }

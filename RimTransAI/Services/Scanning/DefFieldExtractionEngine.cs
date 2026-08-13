@@ -1,5 +1,6 @@
 using System;
 using System.Collections.Generic;
+using System.IO;
 using System.Linq;
 using System.Xml;
 using System.Xml.Linq;
@@ -56,6 +57,7 @@ public sealed class DefFieldExtractionEngine
         ExtractDefInjected(_conflictPolicy, _defPathBuilder, sources.DefInjectedFiles, results, diagnostics);
         ExtractBackstories(_conflictPolicy, _defPathBuilder, sources.BackstoryFiles, results, diagnostics);
         ExtractKeyed(_conflictPolicy, sources.KeyedFiles, results, diagnostics);
+        ExtractStrings(_conflictPolicy, sources.StringFiles, results, diagnostics);
         diagnostics.ExtractedItemCount = results.Count;
         LastDiagnostics = diagnostics;
         return results;
@@ -365,6 +367,88 @@ public sealed class DefFieldExtractionEngine
                 diagnostics.ErrorCount++;
             }
         }
+    }
+
+    private void ExtractStrings(
+        ExtractionConflictPolicy conflictPolicy,
+        IReadOnlyList<XmlSourceFile> stringFiles,
+        List<TranslationItem> output,
+        ExtractionDiagnostics diagnostics)
+    {
+        var upsert = new Dictionary<string, int>(StringComparer.OrdinalIgnoreCase);
+
+        foreach (var source in stringFiles.OrderBy(x => x.Order))
+        {
+            try
+            {
+                string[] lines;
+                try
+                {
+                    lines = File.ReadAllLines(source.FullPath);
+                }
+                catch (Exception ex)
+                {
+                    _logger.LogWarning(ex, "Strings 文件读取失败 SourcePath={SourcePath}", source.FullPath);
+                    diagnostics.ErrorCount++;
+                    continue;
+                }
+
+                var keyBase = BuildStringsKeyBase(source.RelativePath);
+                if (string.IsNullOrWhiteSpace(keyBase))
+                {
+                    continue;
+                }
+
+                for (var i = 0; i < lines.Length; i++)
+                {
+                    var value = (lines[i] ?? string.Empty).Trim();
+                    if (string.IsNullOrWhiteSpace(value))
+                    {
+                        continue;
+                    }
+
+                    if (value.Equals("TODO", StringComparison.OrdinalIgnoreCase))
+                    {
+                        continue;
+                    }
+
+                    var item = new TranslationItem
+                    {
+                        Key = $"{keyBase}.{i.ToString(System.Globalization.CultureInfo.InvariantCulture)}",
+                        DefType = "Strings",
+                        OriginalText = value,
+                        TranslatedText = string.Empty,
+                        Status = "未翻译",
+                        FilePath = source.FullPath,
+                        Version = source.Version,
+                        ExtractionReasonCode = ExtractionReasonCodes.StringsLeaf,
+                        ExtractionSourceContext = $"Path={source.RelativePath};Line={i};Source=Strings"
+                    };
+
+                    var dedupeKey = $"strings|{item.Version}|{item.Key}";
+                    Upsert(output, upsert, dedupeKey, item, conflictPolicy, diagnostics);
+                }
+            }
+            catch (Exception ex)
+            {
+                _logger.LogError(ex, "解析 Strings 文件出错 SourcePath={SourcePath}", source.FullPath);
+                diagnostics.ErrorCount++;
+            }
+        }
+    }
+
+    private static string BuildStringsKeyBase(string relativePath)
+    {
+        var normalized = (relativePath ?? string.Empty).Replace('\\', '/');
+        var marker = "/Strings/";
+        var index = normalized.IndexOf(marker, StringComparison.OrdinalIgnoreCase);
+        var sub = index >= 0 ? normalized.Substring(index + marker.Length) : normalized;
+        if (sub.EndsWith(".txt", StringComparison.OrdinalIgnoreCase))
+        {
+            sub = sub.Substring(0, sub.Length - 4);
+        }
+
+        return sub.Trim().TrimStart('/');
     }
 
     private void ExtractDefInjected(
