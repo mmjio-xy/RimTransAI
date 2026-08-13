@@ -478,6 +478,40 @@ public class DefFieldExtractionEngineTests
         }
     }
 
+    [Fact]
+    public void Extract_AbstractDefWithNameAttribute_ProducesItems()
+    {
+        var root = CreateTempRoot();
+        try
+        {
+            var defsFile = Path.Combine(root, "ThingDefs.xml");
+            File.WriteAllText(defsFile, """
+                <Defs>
+                  <ThingDef Name="BaseGun" Abstract="true">
+                    <label>Base Gun</label>
+                    <description>A base gun description.</description>
+                  </ThingDef>
+                </Defs>
+                """);
+
+            var sources = new XmlSourceCollection();
+            sources.DefFiles.Add(new XmlSourceFile(defsFile, "Defs/ThingDefs.xml", "1.5", "Defs", 0));
+
+            var engine = new DefFieldExtractionEngine();
+            var result = engine.Extract(
+                new ScanContext(root, "English", "English", [], "1.5"),
+                sources,
+                new Dictionary<string, HashSet<string>>());
+
+            result.Should().Contain(x => x.Key == "BaseGun.label" && x.OriginalText == "Base Gun");
+            result.Should().Contain(x => x.Key == "BaseGun.description" && x.OriginalText == "A base gun description.");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     private static string CreateTempRoot()
     {
         var root = Path.Combine(Path.GetTempPath(), $"rta_extract_{Guid.NewGuid():N}");

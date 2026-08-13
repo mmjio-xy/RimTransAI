@@ -109,11 +109,6 @@ public sealed class DefFieldExtractionEngine
                         continue;
                     }
 
-                    if (IsAbstractDef(definition.Element))
-                    {
-                        continue;
-                    }
-
                     ExtractDefDefinition(
                         definition,
                         source,
@@ -789,12 +784,6 @@ public sealed class DefFieldExtractionEngine
         }
 
         return "Def";
-    }
-
-    private static bool IsAbstractDef(XElement defElement)
-    {
-        var abstractAttr = defElement.Attribute("Abstract");
-        return abstractAttr != null && abstractAttr.Value.Trim().Equals("true", StringComparison.OrdinalIgnoreCase);
     }
 
     private static Dictionary<string, HashSet<string>> BuildNormalizedReflectionMap(
