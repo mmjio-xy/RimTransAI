@@ -90,6 +90,38 @@ public class XmlSourceCollectorTests
         }
     }
 
+    [Fact]
+    public void Collect_SkipsHiddenAndTempXmlFiles()
+    {
+        var root = CreateTempModRoot();
+        try
+        {
+            var loadFolder = Path.Combine(root, "1.5");
+            var defsDir = Path.Combine(loadFolder, "Defs");
+            Directory.CreateDirectory(defsDir);
+
+            File.WriteAllText(Path.Combine(defsDir, "Normal.xml"), "<Defs />");
+            File.WriteAllText(Path.Combine(defsDir, ".hidden.xml"), "<Defs />");
+            File.WriteAllText(Path.Combine(defsDir, "._temp.xml"), "<Defs />");
+
+            var collector = new XmlSourceCollector();
+            var context = new ScanContext(root, "English", "English", [], "1.5");
+            var sources = collector.Collect(
+                context,
+                [new LoadFolderPlanEntry(loadFolder, "1.5", "1.5", 0)],
+                [],
+                new FileRegistry());
+
+            sources.DefFiles.Should().ContainSingle(x => x.RelativePath == "Defs/Normal.xml");
+            sources.DefFiles.Should().NotContain(x => x.RelativePath.Contains("hidden", StringComparison.Ordinal));
+            sources.DefFiles.Should().NotContain(x => x.RelativePath.Contains("temp", StringComparison.Ordinal));
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
     private static string CreateTempModRoot()
     {
         var root = Path.Combine(Path.GetTempPath(), $"rta_src_{Guid.NewGuid():N}");

@@ -43,6 +43,12 @@ public sealed class XmlSourceCollector
             foreach (var file in Directory.EnumerateFiles(defsDir, "*.xml", SearchOption.AllDirectories)
                          .OrderBy(x => x, StringComparer.OrdinalIgnoreCase))
             {
+                // 与游戏 DirectXmlLoader.XmlAssetsInModFolder 一致：跳过隐藏/临时文件。
+                if (IsHiddenOrTempFileName(file))
+                {
+                    continue;
+                }
+
                 var relativePath = NormalizeRelativePath(Path.GetRelativePath(loadFolder.FullPath, file));
                 var scope = BuildVersionAwareScope("defs", loadFolder.Version);
                 if (!fileRegistry.TryRegister(scope, relativePath))
@@ -274,5 +280,12 @@ public sealed class XmlSourceCollector
         return string.IsNullOrWhiteSpace(normalizedVersion)
             ? normalizedBase
             : $"{normalizedBase}@{normalizedVersion}";
+    }
+
+    private static bool IsHiddenOrTempFileName(string filePath)
+    {
+        var name = Path.GetFileName(filePath);
+        return name.StartsWith("._", StringComparison.Ordinal)
+            || name.StartsWith(".", StringComparison.Ordinal);
     }
 }
