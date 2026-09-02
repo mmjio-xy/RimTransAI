@@ -22,30 +22,26 @@ public partial class SettingsViewModel : ViewModelBase
     private readonly IconCatalogService _iconCatalogService;
     private readonly ILogger<SettingsViewModel> _logger;
 
-    [ObservableProperty] private string _apiKey = string.Empty;
-    [ObservableProperty] private string _apiUrl = string.Empty;
     [ObservableProperty] private string _assemblyCSharpPath = string.Empty;
     [ObservableProperty] private int _selectedLanguageIndex;
     [ObservableProperty] private int _selectedThemeIndex;
-    [ObservableProperty] private string _targetModel = string.Empty;
     [ObservableProperty] private bool _debugMode;
-    [ObservableProperty] private bool _autoCompleteApiUrl = true;
     [ObservableProperty] private bool _useCustomPrompt;
     [ObservableProperty] private string _customPrompt = string.Empty;
     [ObservableProperty] private int _selectedTemplateIndex;
     [ObservableProperty] private bool _enableMultiThreadTranslation;
     [ObservableProperty] private int _maxThreads = 4;
     [ObservableProperty] private int _threadIntervalMs = 100;
-    [ObservableProperty] private int _apiRequestTimeoutSeconds = 480;
     [ObservableProperty] private bool _enableAutoBackup = true;
-    [ObservableProperty] private string _backupDirectory = "";
+    [ObservableProperty] private string _backupDirectory = string.Empty;
     [ObservableProperty] private int _maxBackupCount = 10;
     [ObservableProperty] private int _backupCompressionLevel = 1;
     [ObservableProperty] private string _validationError = string.Empty;
-
     [ObservableProperty] private ModSourceFolder? _selectedModSource;
+    [ObservableProperty] private TranslationApiProfile? _selectedTranslationApi;
 
     public ObservableCollection<ModSourceFolder> ModSourceFolders { get; } = new();
+    public ObservableCollection<TranslationApiProfile> TranslationApis { get; } = new();
 
     public bool UseDefaultPrompt => !UseCustomPrompt;
     public bool HasValidationError => !string.IsNullOrEmpty(ValidationError);
@@ -62,13 +58,10 @@ public partial class SettingsViewModel : ViewModelBase
     {
         get
         {
-            string langDisplay = SelectedLanguageIndex == 1 ? "繁體中文" : "简体中文";
-            if (UseCustomPrompt && !string.IsNullOrWhiteSpace(CustomPrompt))
-            {
-                return CustomPrompt.Replace("{targetLang}", langDisplay);
-            }
-
-            return _promptTemplates[0].Replace("{targetLang}", langDisplay);
+            var language = SelectedLanguageIndex == 1 ? "繁體中文" : "简体中文";
+            return UseCustomPrompt && !string.IsNullOrWhiteSpace(CustomPrompt)
+                ? CustomPrompt.Replace("{targetLang}", language)
+                : _promptTemplates[0].Replace("{targetLang}", language);
         }
     }
 
@@ -102,10 +95,7 @@ public partial class SettingsViewModel : ViewModelBase
         }
     }
 
-    partial void OnCustomPromptChanged(string value)
-    {
-        OnPropertyChanged(nameof(PreviewPrompt));
-    }
+    partial void OnCustomPromptChanged(string value) => OnPropertyChanged(nameof(PreviewPrompt));
 
     partial void OnUseCustomPromptChanged(bool value)
     {
@@ -113,27 +103,19 @@ public partial class SettingsViewModel : ViewModelBase
         OnPropertyChanged(nameof(UseDefaultPrompt));
     }
 
-    partial void OnSelectedLanguageIndexChanged(int value)
-    {
-        OnPropertyChanged(nameof(PreviewPrompt));
-    }
+    partial void OnSelectedLanguageIndexChanged(int value) => OnPropertyChanged(nameof(PreviewPrompt));
 
     private void LoadFromService()
     {
-        var cfg = _configService.CurrentConfig;
+        var config = _configService.CurrentConfig;
 
-        ApiUrl = cfg.ApiUrl;
-        ApiKey = cfg.ApiKey;
-        TargetModel = cfg.TargetModel;
-        AssemblyCSharpPath = cfg.AssemblyCSharpPath;
-        SelectedLanguageIndex = cfg.TargetLanguage == "ChineseTraditional" ? 1 : 0;
-        SelectedThemeIndex = cfg.AppTheme == "Dark" ? 1 : 0;
-        DebugMode = cfg.DebugMode;
-        AutoCompleteApiUrl = cfg.AutoCompleteApiUrl;
-        UseCustomPrompt = cfg.UseCustomPrompt;
-        CustomPrompt = cfg.CustomPrompt;
-
-        SelectedTemplateIndex = cfg.PromptTemplateName switch
+        AssemblyCSharpPath = config.AssemblyCSharpPath;
+        SelectedLanguageIndex = config.TargetLanguage == "ChineseTraditional" ? 1 : 0;
+        SelectedThemeIndex = config.AppTheme == "Dark" ? 1 : 0;
+        DebugMode = config.DebugMode;
+        UseCustomPrompt = config.UseCustomPrompt;
+        CustomPrompt = config.CustomPrompt;
+        SelectedTemplateIndex = config.PromptTemplateName switch
         {
             "SciFi" => 1,
             "Fantasy" => 2,
@@ -141,18 +123,24 @@ public partial class SettingsViewModel : ViewModelBase
             _ => 0
         };
 
-        EnableMultiThreadTranslation = cfg.EnableMultiThreadTranslation;
-        MaxThreads = Math.Clamp(cfg.MaxThreads, 1, 10);
-        ThreadIntervalMs = Math.Clamp(cfg.ThreadIntervalMs, 0, 1000);
-        ApiRequestTimeoutSeconds = Math.Clamp(cfg.ApiRequestTimeoutSeconds, 30, 1800);
+        EnableMultiThreadTranslation = config.EnableMultiThreadTranslation;
+        MaxThreads = Math.Clamp(config.MaxThreads, 1, 10);
+        ThreadIntervalMs = Math.Clamp(config.ThreadIntervalMs, 0, 1000);
+        EnableAutoBackup = config.EnableAutoBackup;
+        BackupDirectory = config.BackupDirectory ?? string.Empty;
+        MaxBackupCount = Math.Max(1, config.MaxBackupCount);
+        BackupCompressionLevel = Math.Clamp(config.BackupCompressionLevel, 0, 2);
 
-        EnableAutoBackup = cfg.EnableAutoBackup;
-        BackupDirectory = cfg.BackupDirectory ?? "";
-        MaxBackupCount = Math.Max(1, cfg.MaxBackupCount);
-        BackupCompressionLevel = Math.Clamp(cfg.BackupCompressionLevel, 0, 2);
+        TranslationApis.Clear();
+        foreach (var api in config.TranslationApis ?? [])
+        {
+            TranslationApis.Add(api.Clone());
+        }
+
+        SelectedTranslationApi = TranslationApis.FirstOrDefault();
 
         ModSourceFolders.Clear();
-        foreach (var source in cfg.ModSourceFolders ?? new List<ModSourceFolder>())
+        foreach (var source in config.ModSourceFolders ?? [])
         {
             var clone = source.Clone();
             clone.IconKey = _iconCatalogService.ResolveIconKey(clone.IconKey, clone.Id);
@@ -163,22 +151,118 @@ public partial class SettingsViewModel : ViewModelBase
     }
 
     [RelayCommand]
-    private async Task AddModSource()
+    private async Task AddTranslationApi()
     {
-        await OpenModSourceEditorAsync(null);
+        await OpenTranslationApiEditorAsync(null);
     }
+
+    [RelayCommand]
+    private async Task EditSelectedTranslationApi()
+    {
+        if (SelectedTranslationApi != null)
+        {
+            await OpenTranslationApiEditorAsync(SelectedTranslationApi);
+        }
+    }
+
+    [RelayCommand]
+    private void DeleteSelectedTranslationApi()
+    {
+        if (SelectedTranslationApi == null)
+        {
+            return;
+        }
+
+        var index = TranslationApis.IndexOf(SelectedTranslationApi);
+        TranslationApis.Remove(SelectedTranslationApi);
+        SelectedTranslationApi = TranslationApis.ElementAtOrDefault(Math.Min(index, TranslationApis.Count - 1));
+    }
+
+    [RelayCommand]
+    private void MoveSelectedTranslationApiUp() => MoveSelectedTranslationApi(-1);
+
+    [RelayCommand]
+    private void MoveSelectedTranslationApiDown() => MoveSelectedTranslationApi(1);
+
+    private void MoveSelectedTranslationApi(int offset)
+    {
+        if (SelectedTranslationApi == null)
+        {
+            return;
+        }
+
+        var currentIndex = TranslationApis.IndexOf(SelectedTranslationApi);
+        var targetIndex = currentIndex + offset;
+        if (currentIndex < 0 || targetIndex < 0 || targetIndex >= TranslationApis.Count)
+        {
+            return;
+        }
+
+        TranslationApis.Move(currentIndex, targetIndex);
+    }
+
+    private async Task OpenTranslationApiEditorAsync(TranslationApiProfile? api)
+    {
+        if (CurrentWindow == null)
+        {
+            return;
+        }
+
+        var editorWindow = new TranslationApiProfileEditorWindow
+        {
+            DataContext = new TranslationApiProfileEditorViewModel(api)
+        };
+
+        var result = await editorWindow.ShowDialog<TranslationApiProfile?>(CurrentWindow);
+        if (result == null)
+        {
+            return;
+        }
+
+        var duplicateName = TranslationApis
+            .Where(x => !ReferenceEquals(x, api))
+            .Any(x => string.Equals(x.Name.Trim(), result.Name.Trim(), StringComparison.OrdinalIgnoreCase));
+
+        if (duplicateName)
+        {
+            SetValidationError("API 名称已存在，不能重复。");
+            return;
+        }
+
+        if (api == null)
+        {
+            TranslationApis.Add(result);
+            SelectedTranslationApi = result;
+        }
+        else
+        {
+            var index = TranslationApis.IndexOf(api);
+            TranslationApis[index] = result;
+            SelectedTranslationApi = result;
+        }
+
+        ClearValidationError();
+    }
+
+    [RelayCommand]
+    private async Task AddModSource() => await OpenModSourceEditorAsync(null);
 
     [RelayCommand]
     private async Task EditModSource(ModSourceFolder? source)
     {
-        if (source == null) return;
-        await OpenModSourceEditorAsync(source);
+        if (source != null)
+        {
+            await OpenModSourceEditorAsync(source);
+        }
     }
 
     [RelayCommand]
     private void DeleteModSource(ModSourceFolder? source)
     {
-        if (source == null) return;
+        if (source == null)
+        {
+            return;
+        }
 
         ModSourceFolders.Remove(source);
         if (ReferenceEquals(SelectedModSource, source))
@@ -189,16 +273,21 @@ public partial class SettingsViewModel : ViewModelBase
 
     private async Task OpenModSourceEditorAsync(ModSourceFolder? source)
     {
-        if (CurrentWindow == null) return;
+        if (CurrentWindow == null)
+        {
+            return;
+        }
 
-        var editorVm = new ModSourceEditorViewModel(_iconCatalogService, source);
         var editorWindow = new ModSourceEditorWindow
         {
-            DataContext = editorVm
+            DataContext = new ModSourceEditorViewModel(_iconCatalogService, source)
         };
 
         var result = await editorWindow.ShowDialog<ModSourceFolder?>(CurrentWindow);
-        if (result == null) return;
+        if (result == null)
+        {
+            return;
+        }
 
         var duplicatePath = ModSourceFolders
             .Where(x => !string.Equals(x.Id, result.Id, StringComparison.OrdinalIgnoreCase))
@@ -206,8 +295,7 @@ public partial class SettingsViewModel : ViewModelBase
 
         if (duplicatePath)
         {
-            ValidationError = "该来源目录已存在，不能重复。";
-            OnPropertyChanged(nameof(HasValidationError));
+            SetValidationError("该来源目录已存在，不能重复。");
             return;
         }
 
@@ -225,52 +313,25 @@ public partial class SettingsViewModel : ViewModelBase
             SelectedModSource = source;
         }
 
-        ValidationError = string.Empty;
-        OnPropertyChanged(nameof(HasValidationError));
+        ClearValidationError();
     }
 
     [RelayCommand]
     private void SaveAndClose()
     {
-        var errors = new List<string>();
-
-        if (string.IsNullOrWhiteSpace(AssemblyCSharpPath))
-            errors.Add("Assembly-CSharp.dll 路径");
-
-        if (string.IsNullOrWhiteSpace(ApiUrl))
-            errors.Add("API 地址");
-
-        if (string.IsNullOrWhiteSpace(ApiKey))
-            errors.Add("API Key");
-
-        if (string.IsNullOrWhiteSpace(TargetModel))
-            errors.Add("模型名称");
-
-        if (ModSourceFolders.Any(x => string.IsNullOrWhiteSpace(x.FolderPath) || !Directory.Exists(x.FolderPath)))
-            errors.Add("Mod 来源目录(存在无效路径)");
-
-        var duplicateSourcePath = ModSourceFolders
-            .Select(x => x.FolderPath.Trim().ToLowerInvariant())
-            .Where(x => !string.IsNullOrWhiteSpace(x))
-            .GroupBy(x => x)
-            .Any(g => g.Count() > 1);
-
-        if (duplicateSourcePath)
-            errors.Add("Mod 来源目录(存在重复)");
-
+        var errors = ValidateSettings();
         if (errors.Count > 0)
         {
-            ValidationError = $"请检查配置项：{string.Join("、", errors)}";
+            SetValidationError($"请检查配置项：{string.Join("、", errors)}");
             _logger.LogUserWarning("设置验证失败，请检查：{InvalidFields}", errors);
-            OnPropertyChanged(nameof(HasValidationError));
             return;
         }
 
-        ValidationError = string.Empty;
-        OnPropertyChanged(nameof(HasValidationError));
+        ClearValidationError();
 
-        string newTheme = SelectedThemeIndex == 1 ? "Dark" : "Light";
-        string templateName = SelectedTemplateIndex switch
+        var current = _configService.CurrentConfig;
+        var newTheme = SelectedThemeIndex == 1 ? "Dark" : "Light";
+        var templateName = SelectedTemplateIndex switch
         {
             0 => "Default",
             1 => "SciFi",
@@ -281,21 +342,21 @@ public partial class SettingsViewModel : ViewModelBase
 
         var newConfig = new AppConfig
         {
-            ApiUrl = ApiUrl,
-            ApiKey = ApiKey,
-            TargetModel = TargetModel,
+            Version = current.Version,
+            TranslationApis = TranslationApis.Select(x => x.Clone()).ToList(),
             TargetLanguage = SelectedLanguageIndex == 1 ? "ChineseTraditional" : "ChineseSimplified",
             AppTheme = newTheme,
             AssemblyCSharpPath = AssemblyCSharpPath,
             DebugMode = DebugMode,
-            AutoCompleteApiUrl = AutoCompleteApiUrl,
+            MaxTokensPerBatch = current.MaxTokensPerBatch,
+            MinItemsPerBatch = current.MinItemsPerBatch,
+            MaxItemsPerBatch = current.MaxItemsPerBatch,
             CustomPrompt = CustomPrompt,
             UseCustomPrompt = UseCustomPrompt,
             PromptTemplateName = templateName,
             EnableMultiThreadTranslation = EnableMultiThreadTranslation,
             MaxThreads = Math.Clamp(MaxThreads, 1, 10),
             ThreadIntervalMs = Math.Clamp(ThreadIntervalMs, 0, 1000),
-            ApiRequestTimeoutSeconds = Math.Clamp(ApiRequestTimeoutSeconds, 30, 1800),
             EnableAutoBackup = EnableAutoBackup,
             BackupDirectory = BackupDirectory,
             MaxBackupCount = Math.Max(1, MaxBackupCount),
@@ -312,21 +373,124 @@ public partial class SettingsViewModel : ViewModelBase
 
         if (!_configService.SaveConfig(newConfig))
         {
-            ValidationError = "设置保存失败，请检查程序目录写入权限。";
-            OnPropertyChanged(nameof(HasValidationError));
+            SetValidationError("设置保存失败，请检查程序目录写入权限。");
             return;
         }
 
         App.SetTheme(newTheme);
-        LoggingBootstrap.SetApiKey(newConfig.ApiKey);
+        LoggingBootstrap.SetApiKeys(newConfig.TranslationApis.Select(x => x.ApiKey));
         LoggingBootstrap.SetDebugMode(DebugMode);
         _logger.LogUserSuccess(
-            "设置已保存 Theme={Theme} DebugEnabled={DebugEnabled} MultiThreadEnabled={MultiThreadEnabled} MaxThreads={MaxThreads}",
+            "设置已保存 Theme={Theme} DebugEnabled={DebugEnabled} MultiThreadEnabled={MultiThreadEnabled} MaxThreads={MaxThreads} ApiCount={ApiCount}",
             newTheme,
             DebugMode,
             EnableMultiThreadTranslation,
-            newConfig.MaxThreads);
+            newConfig.MaxThreads,
+            newConfig.TranslationApis.Count);
         CurrentWindow?.Close();
+    }
+
+    private List<string> ValidateSettings()
+    {
+        var errors = new List<string>();
+
+        if (string.IsNullOrWhiteSpace(AssemblyCSharpPath))
+        {
+            errors.Add("Assembly-CSharp.dll 路径");
+        }
+
+        if (TranslationApis.Count == 0)
+        {
+            errors.Add("至少添加一个 API");
+        }
+
+        var duplicateApiName = TranslationApis
+            .Select(x => x.Name.Trim())
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .GroupBy(x => x, StringComparer.OrdinalIgnoreCase)
+            .Any(group => group.Count() > 1);
+
+        if (TranslationApis.Any(x => string.IsNullOrWhiteSpace(x.Name)))
+        {
+            errors.Add("API 名称");
+        }
+
+        if (duplicateApiName)
+        {
+            errors.Add("API 名称(存在重复)");
+        }
+
+        var enabledApis = TranslationApis.Where(x => x.IsEnabled).ToList();
+        if (enabledApis.Count == 0)
+        {
+            errors.Add("至少启用一个 API");
+        }
+
+        foreach (var api in TranslationApis)
+        {
+            var displayName = string.IsNullOrWhiteSpace(api.Name) ? "未命名 API" : api.Name.Trim();
+            var models = api.Models ?? [];
+            var duplicateModel = models
+                .Select(x => x.ModelId.Trim())
+                .Where(x => !string.IsNullOrWhiteSpace(x))
+                .GroupBy(x => x, StringComparer.OrdinalIgnoreCase)
+                .Any(group => group.Count() > 1);
+
+            if (models.Any(x => string.IsNullOrWhiteSpace(x.ModelId)))
+            {
+                errors.Add($"API「{displayName}」的模型 ID");
+            }
+
+            if (duplicateModel)
+            {
+                errors.Add($"API「{displayName}」的模型 ID(存在重复)");
+            }
+
+            if (!api.IsEnabled)
+            {
+                continue;
+            }
+
+            if (string.IsNullOrWhiteSpace(api.ApiUrl) || string.IsNullOrWhiteSpace(api.ApiKey))
+            {
+                errors.Add($"启用 API「{displayName}」的连接信息");
+            }
+
+            if (!models.Any(x => x.IsEnabled && !string.IsNullOrWhiteSpace(x.ModelId)))
+            {
+                errors.Add($"启用 API「{displayName}」的模型");
+            }
+        }
+
+        if (ModSourceFolders.Any(x => string.IsNullOrWhiteSpace(x.FolderPath) || !Directory.Exists(x.FolderPath)))
+        {
+            errors.Add("Mod 来源目录(存在无效路径)");
+        }
+
+        var duplicateSourcePath = ModSourceFolders
+            .Select(x => x.FolderPath.Trim())
+            .Where(x => !string.IsNullOrWhiteSpace(x))
+            .GroupBy(x => x, StringComparer.OrdinalIgnoreCase)
+            .Any(group => group.Count() > 1);
+
+        if (duplicateSourcePath)
+        {
+            errors.Add("Mod 来源目录(存在重复)");
+        }
+
+        return errors;
+    }
+
+    private void SetValidationError(string message)
+    {
+        ValidationError = message;
+        OnPropertyChanged(nameof(HasValidationError));
+    }
+
+    private void ClearValidationError()
+    {
+        ValidationError = string.Empty;
+        OnPropertyChanged(nameof(HasValidationError));
     }
 
     [RelayCommand]
@@ -338,7 +502,10 @@ public partial class SettingsViewModel : ViewModelBase
     [RelayCommand]
     private async Task SelectAssemblyCSharpFile()
     {
-        if (CurrentWindow == null) return;
+        if (CurrentWindow == null)
+        {
+            return;
+        }
 
         var files = await CurrentWindow.StorageProvider.OpenFilePickerAsync(new FilePickerOpenOptions
         {
@@ -360,7 +527,10 @@ public partial class SettingsViewModel : ViewModelBase
     [RelayCommand]
     private async Task SelectBackupDirectory()
     {
-        if (CurrentWindow == null) return;
+        if (CurrentWindow == null)
+        {
+            return;
+        }
 
         var folders = await CurrentWindow.StorageProvider.OpenFolderPickerAsync(new FolderPickerOpenOptions
         {

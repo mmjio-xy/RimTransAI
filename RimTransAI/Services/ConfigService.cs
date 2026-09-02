@@ -1,4 +1,5 @@
 using System;
+using System.Collections.Generic;
 using System.IO;
 using System.Linq;
 using System.Text.Json;
@@ -32,38 +33,50 @@ public class ConfigService
             try
             {
                 var json = File.ReadAllText(_filePath);
-                //传入 AppJsonContext.Default.AppConfig
                 CurrentConfig = JsonSerializer.Deserialize(json, AppJsonContext.Default.AppConfig)
                                 ?? new AppConfig();
 
+                var requiresLegacyApiMigration = DoesNotContainVersion(json);
+                if (requiresLegacyApiMigration)
+                {
+                    var legacyApiSettings = JsonSerializer.Deserialize(
+                        json,
+                        AppJsonContext.Default.LegacyApiSettings) ?? new LegacyApiSettings();
+                    CurrentConfig.TranslationApis =
+                    [
+                        new TranslationApiProfile
+                        {
+                            Name = "默认 API",
+                            IsEnabled = true,
+                            ApiUrl = legacyApiSettings.ApiUrl,
+                            ApiKey = legacyApiSettings.ApiKey,
+                            AutoCompleteApiUrl = legacyApiSettings.AutoCompleteApiUrl,
+                            RequestTimeoutSeconds = legacyApiSettings.ApiRequestTimeoutSeconds,
+                            Models =
+                            [
+                                new TranslationApiModel
+                                {
+                                    ModelId = legacyApiSettings.TargetModel,
+                                    IsEnabled = true
+                                }
+                            ]
+                        }
+                    ];
+                }
+
                 NormalizeConfig(CurrentConfig);
 
-                // 兼容历史配置：清理旧版本序列化异常导致的空来源项，并补齐默认值
-                if (CurrentConfig.ModSourceFolders != null)
+                NormalizeModSourceFolders(CurrentConfig);
+
+                if (requiresLegacyApiMigration && !SaveConfig(CurrentConfig))
                 {
-                    CurrentConfig.ModSourceFolders = CurrentConfig.ModSourceFolders
-                        .Where(x => !string.IsNullOrWhiteSpace(x.FolderPath))
-                        .Select(x =>
-                        {
-                            if (string.IsNullOrWhiteSpace(x.Id))
-                            {
-                                x.Id = Guid.NewGuid().ToString("N");
-                            }
-
-                            if (string.IsNullOrWhiteSpace(x.IconKey))
-                            {
-                                x.IconKey = "Folder";
-                            }
-
-                            if (string.IsNullOrWhiteSpace(x.DisplayName))
-                            {
-                                x.DisplayName = Path.GetFileName(x.FolderPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
-                            }
-
-                            return x;
-                        })
-                        .ToList();
+                    _logger.LogUserWarning("旧 API 配置已载入，但迁移后的配置写回失败：{ConfigPath}", _filePath);
                 }
+                else if (requiresLegacyApiMigration)
+                {
+                    _logger.LogInformation("已将旧 API 配置迁移为多 API 配置 ConfigPath={ConfigPath}", _filePath);
+                }
+
                 return;
             }
             catch (JsonException ex)
@@ -108,9 +121,64 @@ public class ConfigService
     {
         ArgumentNullException.ThrowIfNull(config);
 
+        config.Version = AppConfig.CurrentProgramVersion;
         config.MaxThreads = Math.Clamp(config.MaxThreads, 1, 10);
         config.ThreadIntervalMs = Math.Clamp(config.ThreadIntervalMs, 0, 1000);
-        config.ApiRequestTimeoutSeconds = Math.Clamp(config.ApiRequestTimeoutSeconds, 30, 1800);
+        config.TranslationApis ??= new List<TranslationApiProfile>();
+
+        foreach (var api in config.TranslationApis)
+        {
+            api.Name = api.Name?.Trim() ?? string.Empty;
+            api.ApiUrl = api.ApiUrl?.Trim() ?? string.Empty;
+            api.ApiKey = api.ApiKey?.Trim() ?? string.Empty;
+            api.RequestTimeoutSeconds = Math.Clamp(api.RequestTimeoutSeconds, 30, 1800);
+            api.Models ??= new List<TranslationApiModel>();
+
+            foreach (var model in api.Models)
+            {
+                model.ModelId = model.ModelId?.Trim() ?? string.Empty;
+            }
+        }
+    }
+
+    private static bool DoesNotContainVersion(string json)
+    {
+        using var document = JsonDocument.Parse(json);
+        return document.RootElement.ValueKind != JsonValueKind.Object ||
+               !document.RootElement.EnumerateObject()
+                   .Any(property => string.Equals(property.Name, "version", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static void NormalizeModSourceFolders(AppConfig config)
+    {
+        if (config.ModSourceFolders == null)
+        {
+            config.ModSourceFolders = new List<ModSourceFolder>();
+            return;
+        }
+
+        config.ModSourceFolders = config.ModSourceFolders
+            .Where(x => !string.IsNullOrWhiteSpace(x.FolderPath))
+            .Select(x =>
+            {
+                if (string.IsNullOrWhiteSpace(x.Id))
+                {
+                    x.Id = Guid.NewGuid().ToString("N");
+                }
+
+                if (string.IsNullOrWhiteSpace(x.IconKey))
+                {
+                    x.IconKey = "Folder";
+                }
+
+                if (string.IsNullOrWhiteSpace(x.DisplayName))
+                {
+                    x.DisplayName = Path.GetFileName(x.FolderPath.TrimEnd(Path.DirectorySeparatorChar, Path.AltDirectorySeparatorChar));
+                }
+
+                return x;
+            })
+            .ToList();
     }
 }
 

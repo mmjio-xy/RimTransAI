@@ -587,30 +587,36 @@ public partial class MainWindowViewModel : ViewModelBase
         }
 
         var config = _configService.CurrentConfig;
+        var enabledApis = (config.TranslationApis ?? [])
+            .Where(api => api.IsEnabled)
+            .ToList();
 
-        if (string.IsNullOrWhiteSpace(config.ApiKey))
+        if (enabledApis.Count == 0)
         {
-            LogOutput = "错误：未配置 API Key，请点击“程序设置”进行配置。";
-            _logger.LogUserWarning("未配置 API Key，请前往程序设置");
+            LogOutput = "错误：未启用任何 API，请点击“程序设置”进行配置。";
+            _logger.LogUserWarning("未启用任何 API，请前往程序设置");
             await OpenSettings();
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(config.ApiUrl))
+        var invalidApi = enabledApis.FirstOrDefault(api =>
+            string.IsNullOrWhiteSpace(api.Name) ||
+            string.IsNullOrWhiteSpace(api.ApiUrl) ||
+            string.IsNullOrWhiteSpace(api.ApiKey) ||
+            !(api.Models?.Any(model => model.IsEnabled && !string.IsNullOrWhiteSpace(model.ModelId)) ?? false));
+
+        if (invalidApi != null)
         {
-            LogOutput = "错误：未配置 API URL，请点击“程序设置”进行配置。";
-            _logger.LogUserWarning("未配置 API URL，请前往程序设置");
+            LogOutput = "错误：存在未完整配置的启用 API，请点击“程序设置”进行配置。";
+            _logger.LogUserWarning("存在未完整配置的启用 API，请前往程序设置 ApiName={ApiName}", invalidApi.Name);
             await OpenSettings();
             return;
         }
 
-        if (string.IsNullOrWhiteSpace(config.TargetModel))
-        {
-            LogOutput = "错误：未配置目标模型，请点击“程序设置”进行配置。";
-            _logger.LogUserWarning("未配置目标模型，请前往程序设置");
-            await OpenSettings();
-            return;
-        }
+        var enabledTargetCount = enabledApis.Sum(api => api.Models!.Count(model => model.IsEnabled));
+        var apiFailoverService = new TranslationApiFailoverService(
+            _llmService,
+            _loggerFactory.CreateLogger<TranslationApiFailoverService>());
 
         var operationId = Guid.NewGuid().ToString("N");
         using var translationScope = _logger.BeginScope(new Dictionary<string, object>
@@ -618,7 +624,8 @@ public partial class MainWindowViewModel : ViewModelBase
             ["OperationId"] = operationId,
             ["OperationType"] = "Translation",
             ["ModName"] = SelectedMod.Name,
-            ["Model"] = config.TargetModel
+            ["EnabledApiCount"] = enabledApis.Count,
+            ["EnabledModelCount"] = enabledTargetCount
         });
 
         IsTranslating = true;
@@ -655,12 +662,13 @@ public partial class MainWindowViewModel : ViewModelBase
         int totalBatches = batchResult.TotalBatches;
 
         _logger.LogDebug(
-            "翻译分批完成 TotalBatches={TotalBatches} OversizedBatches={OversizedBatches} ApiUrl={ApiUrl}",
+            "翻译分批完成 TotalBatches={TotalBatches} OversizedBatches={OversizedBatches} EnabledApiCount={EnabledApiCount} EnabledModelCount={EnabledModelCount}",
             totalBatches,
             batchResult.OversizedBatches,
-            config.ApiUrl);
+            enabledApis.Count,
+            enabledTargetCount);
         LogOutput = $"开始翻译：{SelectedMod.Name} 共 {totalItems} 条，去重后 {totalGroups} 条文本。";
-        LogOutput += $"\n模型: {config.TargetModel} | 目标: {config.TargetLanguage}";
+        LogOutput += $"\n已启用 API: {string.Join("、", enabledApis.Select(api => api.Name))} | 可用模型: {enabledTargetCount} | 目标: {config.TargetLanguage}";
         LogOutput += $"\n智能分批: {totalBatches} 批次";
 
         try
@@ -690,21 +698,16 @@ public partial class MainWindowViewModel : ViewModelBase
 
                     try
                     {
-                        var results = await _llmService.TranslateBatchAsync(
-                            config.ApiKey,
+                        var results = await apiFailoverService.TranslateBatchAsync(
+                            config.TranslationApis ?? [],
                             batchDict,
-                            config.ApiUrl,
-                            config.TargetModel,
                             config.TargetLanguage,
                             config.UseCustomPrompt && !string.IsNullOrWhiteSpace(config.CustomPrompt)
                                 ? config.CustomPrompt
                                 : null,
-                            config.ApiRequestTimeoutSeconds,
-                            config.AutoCompleteApiUrl,
                             cancellationToken
                         );
 
-                        var missingCount = 0;
                         foreach (var group in batch)
                         {
                             var originalText = group.Key;
@@ -720,7 +723,6 @@ public partial class MainWindowViewModel : ViewModelBase
                             }
                             else
                             {
-                                missingCount++;
                                 foreach (var item in group)
                                 {
                                     if (string.IsNullOrEmpty(item.TranslatedText))
@@ -729,36 +731,11 @@ public partial class MainWindowViewModel : ViewModelBase
                             }
                         }
 
-                        if (missingCount == 0)
-                        {
-                            successfulBatches++;
-                        }
-                        else
-                        {
-                            _logger.LogWarning(
-                                "单线程翻译批次结果不完整 BatchIndex={BatchIndex} TotalBatches={TotalBatches} MissingCount={MissingCount}",
-                                i + 1,
-                                totalBatches,
-                                missingCount);
-                        }
+                        successfulBatches++;
                     }
                     catch (OperationCanceledException)
                     {
                         throw;
-                    }
-                    catch (Exception ex)
-                    {
-                        _logger.LogUserError(
-                            ex,
-                            "翻译批次 {BatchIndex}/{TotalBatches} 失败：{ErrorMessage}",
-                            i + 1,
-                            totalBatches,
-                            ex.Message);
-                        LogOutput += $"\n批次 {i + 1} 失败: {ex.Message}";
-                        foreach (var group in batch)
-                        {
-                            foreach (var item in group) item.Status = "出错";
-                        }
                     }
 
                     processedGroups += batch.Count;
@@ -792,6 +769,11 @@ public partial class MainWindowViewModel : ViewModelBase
                 successfulBatches,
                 totalBatches);
             LogOutput += "\n翻译已取消。";
+        }
+        catch (TranslationApiFailoverException ex)
+        {
+            _logger.LogUserError(ex, "翻译终止，API 调用失败 FailedApis={FailedApis}", ex.FailedApiNames);
+            LogOutput += $"\n翻译终止，{ex.Message}";
         }
         catch (Exception ex)
         {
@@ -845,13 +827,9 @@ public partial class MainWindowViewModel : ViewModelBase
                 batchResult,
                 concurrencyManager,
                 progressReporter,
-                config.ApiKey,
-                config.ApiUrl,
-                config.TargetModel,
+                config.TranslationApis,
                 config.TargetLanguage,
-                config.ApiRequestTimeoutSeconds,
                 config.UseCustomPrompt && !string.IsNullOrWhiteSpace(config.CustomPrompt) ? config.CustomPrompt : null,
-                config.AutoCompleteApiUrl,
                 cancellationToken);
         }
         catch (OperationCanceledException)

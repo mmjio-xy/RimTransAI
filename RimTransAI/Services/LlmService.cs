@@ -19,10 +19,7 @@ public class LlmService : IDisposable
     private const string ChatCompletionsPath = "/v1/chat/completions";
     private const string V1Path = "/v1";
     private readonly Lock _clientLock = new();
-    private ChatClient? _cachedChatClient;
-    private string? _cachedApiKey;
-    private Uri? _cachedEndpoint;
-    private string? _cachedModel;
+    private readonly Dictionary<ChatClientCacheKey, ChatClient> _chatClientCache = new();
     private readonly ILogger<LlmService> _logger;
 
     public LlmService()
@@ -231,12 +228,10 @@ public class LlmService : IDisposable
     {
         lock (_clientLock)
         {
-            if (_cachedChatClient != null &&
-                string.Equals(_cachedApiKey, apiKey, StringComparison.Ordinal) &&
-                Equals(_cachedEndpoint, endpoint) &&
-                string.Equals(_cachedModel, model, StringComparison.Ordinal))
+            var cacheKey = new ChatClientCacheKey(apiKey, endpoint.AbsoluteUri, model);
+            if (_chatClientCache.TryGetValue(cacheKey, out var cachedClient))
             {
-                return _cachedChatClient;
+                return cachedClient;
             }
 
             var options = new OpenAIClientOptions
@@ -245,11 +240,9 @@ public class LlmService : IDisposable
             };
 
             var client = new OpenAIClient(new ApiKeyCredential(apiKey), options);
-            _cachedChatClient = client.GetChatClient(model);
-            _cachedApiKey = apiKey;
-            _cachedEndpoint = endpoint;
-            _cachedModel = model;
-            return _cachedChatClient;
+            var chatClient = client.GetChatClient(model);
+            _chatClientCache[cacheKey] = chatClient;
+            return chatClient;
         }
     }
 
@@ -298,10 +291,9 @@ public class LlmService : IDisposable
     {
         lock (_clientLock)
         {
-            _cachedChatClient = null;
-            _cachedApiKey = null;
-            _cachedEndpoint = null;
-            _cachedModel = null;
+            _chatClientCache.Clear();
         }
     }
+
+    private sealed record ChatClientCacheKey(string ApiKey, string Endpoint, string Model);
 }

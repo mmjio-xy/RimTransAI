@@ -1,7 +1,11 @@
+using System;
+using System.Collections.Generic;
+using System.Linq;
+using System.Threading;
+using System.Threading.Tasks;
 using FluentAssertions;
 using RimTransAI.Models;
 using RimTransAI.Services;
-using RimTransAI.Tests.Helpers;
 using Xunit;
 
 namespace RimTransAI.Tests.Services;
@@ -9,56 +13,42 @@ namespace RimTransAI.Tests.Services;
 public class MultiThreadedTranslationServiceTests
 {
     [Fact]
-    public async Task ExecuteBatchesAsync_WhenOneBatchFails_ReturnsOnlySuccessfulBatchCount()
+    public async Task ExecuteBatchesAsync_WhenPrimaryApiFails_UsesNextApi()
     {
-        var successfulItem = CreateItem("good");
-        var failedItem = CreateItem("bad");
-        var batchResult = CreateBatchResult(successfulItem, failedItem);
-        var llmService = new StubLlmService((sourceTexts, _) =>
+        var firstItem = CreateItem("first");
+        var secondItem = CreateItem("second");
+        var batchResult = CreateBatchResult(firstItem, secondItem);
+        var calls = new List<string>();
+        var llmService = new StubLlmService((apiUrl, _, sourceTexts, _) =>
         {
-            if (sourceTexts.ContainsKey("bad"))
+            calls.Add(apiUrl);
+            if (apiUrl == "https://primary.example")
             {
-                throw new InvalidOperationException("API failure");
+                throw new InvalidOperationException("primary failure");
             }
 
             return Task.FromResult(sourceTexts.ToDictionary(x => x.Key, _ => "翻译成功"));
         });
-        var dispatchedUpdates = 0;
-        var logger = new RecordingLogger<MultiThreadedTranslationService>();
 
-        using var concurrencyManager = new ConcurrencyManager(2);
+        using var concurrencyManager = new ConcurrencyManager(1);
         using var progressReporter = new ThreadSafeProgressReporter();
-        using var service = new MultiThreadedTranslationService(
-            llmService,
-            update =>
-            {
-                Interlocked.Increment(ref dispatchedUpdates);
-                update();
-                return Task.CompletedTask;
-            },
-            logger);
+        using var service = new MultiThreadedTranslationService(llmService);
 
         var successfulBatches = await service.ExecuteBatchesAsync(
             batchResult,
             concurrencyManager,
             progressReporter,
-            "api-key",
-            "https://example.com",
-            "model",
-            "Chinese",
-            480);
+            [Api("Primary", "https://primary.example"), Api("Secondary", "https://secondary.example")],
+            "Chinese");
 
-        successfulBatches.Should().Be(1);
-        successfulItem.Status.Should().Be("已翻译");
-        successfulItem.TranslatedText.Should().Be("翻译成功");
-        failedItem.Status.Should().Be("翻译失败");
-        failedItem.TranslatedText.Should().BeEmpty();
-        dispatchedUpdates.Should().Be(2);
-        logger.Records.Any(record =>
-                record.Exception is InvalidOperationException &&
-                record.Properties.TryGetValue("BatchIndex", out var batchIndex) &&
-                Equals(batchIndex, 2))
-            .Should().BeTrue();
+        successfulBatches.Should().Be(2);
+        firstItem.Status.Should().Be("已翻译");
+        secondItem.Status.Should().Be("已翻译");
+        calls.Should().Equal(
+            "https://primary.example",
+            "https://secondary.example",
+            "https://primary.example",
+            "https://secondary.example");
     }
 
     [Fact]
@@ -67,7 +57,7 @@ public class MultiThreadedTranslationServiceTests
         var item = CreateItem("cancel-me");
         var batchResult = CreateBatchResult(item);
         var requestStarted = new TaskCompletionSource(TaskCreationOptions.RunContinuationsAsynchronously);
-        var llmService = new StubLlmService(async (_, cancellationToken) =>
+        var llmService = new StubLlmService(async (_, _, _, cancellationToken) =>
         {
             requestStarted.SetResult();
             await Task.Delay(Timeout.InfiniteTimeSpan, cancellationToken);
@@ -83,11 +73,8 @@ public class MultiThreadedTranslationServiceTests
             batchResult,
             concurrencyManager,
             progressReporter,
-            "api-key",
-            "https://example.com",
-            "model",
+            [Api("Primary", "https://primary.example")],
             "Chinese",
-            480,
             cancellationToken: cts.Token);
 
         await requestStarted.Task;
@@ -99,52 +86,70 @@ public class MultiThreadedTranslationServiceTests
     }
 
     [Fact]
-    public async Task ExecuteBatchesAsync_WhenResponseMissesItem_DoesNotCountBatchAsSuccessful()
+    public async Task ExecuteBatchesAsync_WhenFirstResponseIsIncomplete_UsesNextApi()
     {
         var item = CreateItem("missing");
         var batchResult = CreateBatchResult(item);
-        var llmService = new StubLlmService((_, _) =>
-            Task.FromResult(new Dictionary<string, string>()));
-        var logger = new RecordingLogger<MultiThreadedTranslationService>();
+        var llmService = new StubLlmService((apiUrl, _, sourceTexts, _) =>
+            Task.FromResult(apiUrl == "https://primary.example"
+                ? new Dictionary<string, string>()
+                : sourceTexts.ToDictionary(x => x.Key, _ => "补全翻译")));
 
         using var concurrencyManager = new ConcurrencyManager(1);
         using var progressReporter = new ThreadSafeProgressReporter();
-        using var service = new MultiThreadedTranslationService(
-            llmService,
-            update =>
-            {
-                update();
-                return Task.CompletedTask;
-            },
-            logger);
+        using var service = new MultiThreadedTranslationService(llmService);
 
         var successfulBatches = await service.ExecuteBatchesAsync(
             batchResult,
             concurrencyManager,
             progressReporter,
-            "api-key",
-            "https://example.com",
-            "model",
-            "Chinese",
-            480);
+            [Api("Primary", "https://primary.example"), Api("Secondary", "https://secondary.example")],
+            "Chinese");
 
-        successfulBatches.Should().Be(0);
-        item.Status.Should().Be("未翻译");
-        logger.Records.Any(record =>
-                record.Level == Microsoft.Extensions.Logging.LogLevel.Warning &&
-                record.Properties.TryGetValue("MissingCount", out var missingCount) &&
-                Equals(missingCount, 1))
-            .Should().BeTrue();
+        successfulBatches.Should().Be(1);
+        item.Status.Should().Be("已翻译");
+        item.TranslatedText.Should().Be("补全翻译");
     }
 
-    private static TranslationItem CreateItem(string originalText)
+    [Fact]
+    public async Task ExecuteBatchesAsync_WhenAllApisFail_StopsAndReportsFailedApiNames()
     {
-        return new TranslationItem
-        {
-            Key = originalText,
-            OriginalText = originalText
-        };
+        var item = CreateItem("failure");
+        var batchResult = CreateBatchResult(item);
+        var llmService = new StubLlmService((_, _, _, _) =>
+            throw new InvalidOperationException("API failure"));
+
+        using var concurrencyManager = new ConcurrencyManager(1);
+        using var progressReporter = new ThreadSafeProgressReporter();
+        using var service = new MultiThreadedTranslationService(llmService);
+
+        var action = () => service.ExecuteBatchesAsync(
+            batchResult,
+            concurrencyManager,
+            progressReporter,
+            [Api("Primary", "https://primary.example"), Api("Secondary", "https://secondary.example")],
+            "Chinese");
+
+        var exception = await FluentActions.Awaiting(action)
+            .Should().ThrowAsync<TranslationApiFailoverException>();
+
+        exception.Which.FailedApiNames.Should().Equal("Primary", "Secondary");
+        item.Status.Should().Be("等待中");
     }
+
+    private static TranslationApiProfile Api(string name, string apiUrl) => new()
+    {
+        Name = name,
+        ApiUrl = apiUrl,
+        ApiKey = "test-key",
+        Models = [new TranslationApiModel { ModelId = "test-model" }]
+    };
+
+    private static TranslationItem CreateItem(string originalText) => new()
+    {
+        Key = originalText,
+        OriginalText = originalText
+    };
 
     private static BatchingService.BatchResult CreateBatchResult(params TranslationItem[] items)
     {
@@ -160,7 +165,7 @@ public class MultiThreadedTranslationServiceTests
     }
 
     private sealed class StubLlmService(
-        Func<Dictionary<string, string>, CancellationToken, Task<Dictionary<string, string>>> handler)
+        Func<string, string, Dictionary<string, string>, CancellationToken, Task<Dictionary<string, string>>> handler)
         : LlmService
     {
         public override Task<Dictionary<string, string>> TranslateBatchAsync(
@@ -174,7 +179,7 @@ public class MultiThreadedTranslationServiceTests
             bool autoCompleteApiUrl = true,
             CancellationToken cancellationToken = default)
         {
-            return handler(sourceTexts, cancellationToken);
+            return handler(apiUrl, model, sourceTexts, cancellationToken);
         }
     }
 }

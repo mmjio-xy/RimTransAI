@@ -15,6 +15,7 @@ namespace RimTransAI.Services;
 public class MultiThreadedTranslationService : IDisposable
 {
     private readonly LlmService _llmService;
+    private readonly TranslationApiFailoverService _apiFailoverService;
     private readonly bool _ownsLlmService;
     private readonly Func<Action, Task> _applyItemUpdatesAsync;
     private readonly ILogger<MultiThreadedTranslationService> _logger;
@@ -63,6 +64,7 @@ public class MultiThreadedTranslationService : IDisposable
         ILogger<MultiThreadedTranslationService> logger)
     {
         _llmService = llmService ?? throw new ArgumentNullException(nameof(llmService));
+        _apiFailoverService = new TranslationApiFailoverService(_llmService);
         _ownsLlmService = ownsLlmService;
         _applyItemUpdatesAsync = applyItemUpdatesAsync
             ?? throw new ArgumentNullException(nameof(applyItemUpdatesAsync));
@@ -81,9 +83,7 @@ public class MultiThreadedTranslationService : IDisposable
     /// <param name="batchResult">分批结果</param>
     /// <param name="concurrencyManager">并发控制器</param>
     /// <param name="progressReporter">进度报告器</param>
-    /// <param name="apiKey">API Key</param>
-    /// <param name="apiUrl">API URL</param>
-    /// <param name="model">模型名称</param>
+    /// <param name="translationApis">按顺序尝试的 API 和模型设置</param>
     /// <param name="targetLang">目标语言</param>
     /// <param name="customPrompt">自定义提示词</param>
     /// <param name="cancellationToken">取消令牌</param>
@@ -92,13 +92,9 @@ public class MultiThreadedTranslationService : IDisposable
         BatchingService.BatchResult batchResult,
         ConcurrencyManager concurrencyManager,
         ThreadSafeProgressReporter progressReporter,
-        string apiKey,
-        string apiUrl,
-        string model,
+        IReadOnlyList<TranslationApiProfile> translationApis,
         string targetLang,
-        int requestTimeoutSeconds,
         string? customPrompt = null,
-        bool autoCompleteApiUrl = true,
         CancellationToken cancellationToken = default)
     {
         if (_disposed)
@@ -109,18 +105,44 @@ public class MultiThreadedTranslationService : IDisposable
 
         var processedBatches = 0;
         var successfulBatches = 0;
+        TranslationApiFailoverException? terminalFailure = null;
 
         var nextBatchIndex = -1;
         var workerCount = Math.Min(
             concurrencyManager.MaxConcurrentRequests,
             batchResult.TotalBatches);
 
+        using var terminalFailureCts = new CancellationTokenSource();
+        using var linkedCts = CancellationTokenSource.CreateLinkedTokenSource(
+            cancellationToken,
+            terminalFailureCts.Token);
+
         // 只创建固定数量的 worker，避免为每个批次同时创建 Task 和取消令牌注册。
         var workers = Enumerable.Range(0, workerCount)
             .Select(_ => ProcessBatchesAsync())
             .ToList();
 
-        await Task.WhenAll(workers);
+        try
+        {
+            await Task.WhenAll(workers);
+        }
+        catch (TranslationApiFailoverException) when (terminalFailure != null)
+        {
+            // 终止原因已由第一个失败批次记录，下面统一向调用方报告。
+        }
+        catch (OperationCanceledException) when (
+            terminalFailureCts.IsCancellationRequested &&
+            !cancellationToken.IsCancellationRequested)
+        {
+            // 由某个批次耗尽全部 API 引发的内部取消，下面会统一抛出该批次的失败信息。
+        }
+
+        cancellationToken.ThrowIfCancellationRequested();
+
+        if (terminalFailure != null)
+        {
+            throw terminalFailure;
+        }
 
         return successfulBatches;
 
@@ -128,28 +150,36 @@ public class MultiThreadedTranslationService : IDisposable
         {
             while (true)
             {
-                cancellationToken.ThrowIfCancellationRequested();
+                linkedCts.Token.ThrowIfCancellationRequested();
 
                 var batchIndex = Interlocked.Increment(ref nextBatchIndex);
                 if (batchIndex >= batchResult.TotalBatches)
                     return;
 
-                await ProcessBatchWithProgressAsync(
-                    batchResult.Batches[batchIndex],
-                    batchIndex + 1,
-                    batchResult.TotalBatches,
-                    concurrencyManager,
-                    progressReporter,
-                    apiKey,
-                    apiUrl,
-                    model,
-                    targetLang,
-                    requestTimeoutSeconds,
-                    customPrompt,
-                    autoCompleteApiUrl,
-                    () => Interlocked.Increment(ref processedBatches),
-                    () => Interlocked.Increment(ref successfulBatches),
-                    cancellationToken);
+                try
+                {
+                    await ProcessBatchWithProgressAsync(
+                        batchResult.Batches[batchIndex],
+                        batchIndex + 1,
+                        batchResult.TotalBatches,
+                        concurrencyManager,
+                        progressReporter,
+                        translationApis,
+                        targetLang,
+                        customPrompt,
+                        () => Interlocked.Increment(ref processedBatches),
+                        () => Interlocked.Increment(ref successfulBatches),
+                        linkedCts.Token);
+                }
+                catch (TranslationApiFailoverException ex)
+                {
+                    if (Interlocked.CompareExchange(ref terminalFailure, ex, null) == null)
+                    {
+                        terminalFailureCts.Cancel();
+                    }
+
+                    throw;
+                }
             }
         }
     }
@@ -160,13 +190,9 @@ public class MultiThreadedTranslationService : IDisposable
         int totalBatches,
         ConcurrencyManager concurrencyManager,
         ThreadSafeProgressReporter progressReporter,
-        string apiKey,
-        string apiUrl,
-        string model,
+        IReadOnlyList<TranslationApiProfile> translationApis,
         string targetLang,
-        int requestTimeoutSeconds,
         string? customPrompt,
-        bool autoCompleteApiUrl,
         Func<int> markBatchProcessed,
         Func<int> markBatchSuccessful,
         CancellationToken cancellationToken)
@@ -177,13 +203,9 @@ public class MultiThreadedTranslationService : IDisposable
             totalBatches,
             concurrencyManager,
             progressReporter,
-            apiKey,
-            apiUrl,
-            model,
+            translationApis,
             targetLang,
-            requestTimeoutSeconds,
             customPrompt,
-            autoCompleteApiUrl,
             cancellationToken);
 
         if (succeeded)
@@ -208,13 +230,9 @@ public class MultiThreadedTranslationService : IDisposable
         int totalBatches,
         ConcurrencyManager concurrencyManager,
         ThreadSafeProgressReporter progressReporter,
-        string apiKey,
-        string apiUrl,
-        string model,
+        IReadOnlyList<TranslationApiProfile> translationApis,
         string targetLang,
-        int requestTimeoutSeconds,
         string? customPrompt,
-        bool autoCompleteApiUrl,
         CancellationToken cancellationToken)
     {
         try
@@ -233,15 +251,11 @@ public class MultiThreadedTranslationService : IDisposable
                     batchIndex,
                     totalBatches);
                 progressReporter.ReportLog($"开始处理批次 {batchIndex}/{totalBatches}，包含 {batch.Count} 个翻译组");
-                return await _llmService.TranslateBatchAsync(
-                    apiKey,
+                return await _apiFailoverService.TranslateBatchAsync(
+                    translationApis,
                     BuildSourceDictionary(batch),
-                    apiUrl,
-                    model,
                     targetLang,
                     customPrompt,
-                    requestTimeoutSeconds,
-                    autoCompleteApiUrl,
                     ct);
             }, cancellationToken);
 
@@ -278,6 +292,11 @@ public class MultiThreadedTranslationService : IDisposable
                 totalBatches);
             progressReporter.ReportLog($"✗ 批次 {batchIndex}/{totalBatches} 已取消");
             throw; // 重新抛出以取消其他任务
+        }
+        catch (TranslationApiFailoverException)
+        {
+            progressReporter.ReportLog($"✗ 批次 {batchIndex}/{totalBatches} 已耗尽全部 API");
+            throw;
         }
         catch (Exception ex)
         {

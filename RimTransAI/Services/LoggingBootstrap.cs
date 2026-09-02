@@ -81,6 +81,19 @@ public static class LoggingBootstrap
         }
     }
 
+    /// <summary>
+    /// 注册当前配置中的全部 API Key，并保留此前登记的密钥以脱敏异步日志事件。
+    /// </summary>
+    public static void SetApiKeys(IEnumerable<string?> apiKeys)
+    {
+        ArgumentNullException.ThrowIfNull(apiKeys);
+
+        foreach (var apiKey in apiKeys)
+        {
+            SetApiKey(apiKey);
+        }
+    }
+
     public static void Initialize(string? logsDirectory = null)
     {
         lock (InitializationLock)

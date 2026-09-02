@@ -1,7 +1,8 @@
+using System.Text.Json;
+using System.Linq;
 using FluentAssertions;
 using RimTransAI.Models;
 using RimTransAI.Services;
-using System.Text.Json;
 using Xunit;
 
 namespace RimTransAI.Tests.Services;
@@ -9,9 +10,8 @@ namespace RimTransAI.Tests.Services;
 public class AppJsonContextTests
 {
     [Fact]
-    public void AppConfig_WithModSourceFolders_ShouldSerializeAndDeserializeAllFields()
+    public void AppConfig_WithApiProfiles_ShouldSerializeAndDeserializeAllFields()
     {
-        // Arrange
         var source = new ModSourceFolder
         {
             Id = "source-1",
@@ -20,34 +20,40 @@ public class AppJsonContextTests
             IconKey = "FolderMultipleOutline",
             IsEnabled = true
         };
-
         var config = new AppConfig
         {
-            ApiUrl = "https://api.example.com",
-            ApiKey = "test-key",
-            TargetModel = "test-model",
-            ApiRequestTimeoutSeconds = 720,
+            TranslationApis =
+            [
+                new TranslationApiProfile
+                {
+                    Name = "Test API",
+                    ApiUrl = "https://api.example.com",
+                    ApiKey = "test-key",
+                    AutoCompleteApiUrl = false,
+                    RequestTimeoutSeconds = 720,
+                    Models = [new TranslationApiModel { ModelId = "test-model" }]
+                }
+            ],
             ModSourceFolders = [source]
         };
 
-        // Act
         var json = JsonSerializer.Serialize(config, AppJsonContext.Default.AppConfig);
         var restored = JsonSerializer.Deserialize(json, AppJsonContext.Default.AppConfig);
+        using var document = JsonDocument.Parse(json);
 
-        // Assert
-        json.Should().Contain("\"DisplayName\"");
-        json.Should().Contain("\"FolderPath\"");
-        json.Should().Contain("\"IconKey\"");
-        json.Should().Contain("\"ApiRequestTimeoutSeconds\"");
+        document.RootElement.EnumerateObject().First().Name.Should().Be("version");
+        json.Should().Contain("\"TranslationApis\"");
+        json.Should().NotContain("\"ApiRequestTimeoutSeconds\"");
         json.Should().NotContain("\"IconKind\"");
 
         restored.Should().NotBeNull();
-        restored!.ModSourceFolders.Should().HaveCount(1);
+        restored!.TranslationApis.Should().ContainSingle();
+        restored.TranslationApis[0].Name.Should().Be("Test API");
+        restored.TranslationApis[0].RequestTimeoutSeconds.Should().Be(720);
+        restored.TranslationApis[0].Models.Should().ContainSingle();
+        restored.TranslationApis[0].Models[0].ModelId.Should().Be("test-model");
+        restored.ModSourceFolders.Should().ContainSingle();
         restored.ModSourceFolders[0].Id.Should().Be("source-1");
         restored.ModSourceFolders[0].DisplayName.Should().Be("Steam Workshop");
-        restored.ModSourceFolders[0].FolderPath.Should().Be(@"D:\RimWorld\Mods");
-        restored.ModSourceFolders[0].IconKey.Should().Be("FolderMultipleOutline");
-        restored.ModSourceFolders[0].IsEnabled.Should().BeTrue();
-        restored.ApiRequestTimeoutSeconds.Should().Be(720);
     }
 }

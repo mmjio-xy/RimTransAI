@@ -7,38 +7,39 @@ namespace RimTransAI.Tests.Models;
 public class AppConfigTests
 {
     [Fact]
-    public void DefaultValues_AreCorrect()
+    public void DefaultValues_ContainVersionAndOneDefaultApiProfile()
     {
-        // Act
         var config = new AppConfig();
 
-        // Assert
-        config.ApiUrl.Should().Be("https://api.openai.com");
-        config.ApiKey.Should().BeEmpty();
-        config.TargetModel.Should().Be("gpt-3.5-turbo");
+        config.Version.Should().Be(AppConfig.CurrentProgramVersion);
+        config.TranslationApis.Should().ContainSingle();
+        config.TranslationApis[0].Name.Should().Be("默认 API");
+        config.TranslationApis[0].IsEnabled.Should().BeTrue();
+        config.TranslationApis[0].ApiUrl.Should().Be("https://api.openai.com");
+        config.TranslationApis[0].ApiKey.Should().BeEmpty();
+        config.TranslationApis[0].Models.Should().ContainSingle();
+        config.TranslationApis[0].Models[0].ModelId.Should().Be("gpt-3.5-turbo");
         config.TargetLanguage.Should().Be("ChineseSimplified");
         config.AppTheme.Should().Be("Light");
         config.AssemblyCSharpPath.Should().BeEmpty();
         config.DebugMode.Should().BeFalse();
-        config.ApiRequestTimeoutSeconds.Should().Be(480);
     }
 
     [Fact]
-    public void Properties_CanBeSet()
+    public void ProfileClone_CreatesIndependentModelCollection()
     {
-        // Arrange
-        var config = new AppConfig();
+        var profile = new TranslationApiProfile
+        {
+            Name = "Primary",
+            ApiKey = "test-key",
+            Models = [new TranslationApiModel { ModelId = "model-a" }]
+        };
 
-        // Act
-        config.ApiUrl = "https://custom.api.com";
-        config.ApiKey = "test-key";
-        config.DebugMode = true;
-        config.ApiRequestTimeoutSeconds = 900;
+        var clone = profile.Clone();
+        clone.Models[0].ModelId = "model-b";
 
-        // Assert
-        config.ApiUrl.Should().Be("https://custom.api.com");
-        config.ApiKey.Should().Be("test-key");
-        config.DebugMode.Should().BeTrue();
-        config.ApiRequestTimeoutSeconds.Should().Be(900);
+        clone.Should().NotBeSameAs(profile);
+        clone.Models.Should().NotBeSameAs(profile.Models);
+        profile.Models[0].ModelId.Should().Be("model-a");
     }
 }

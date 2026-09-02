@@ -5,6 +5,11 @@ using RimTransAI.Models;
 namespace RimTransAI.Services;
 
 [JsonSerializable(typeof(AppConfig))]                    // 设置文件
+[JsonSerializable(typeof(LegacyApiSettings))]           // 旧 API 设置迁移
+[JsonSerializable(typeof(TranslationApiProfile))]       // API 设置项
+[JsonSerializable(typeof(List<TranslationApiProfile>))] // API 设置集合
+[JsonSerializable(typeof(TranslationApiModel))]         // API 模型项
+[JsonSerializable(typeof(List<TranslationApiModel>))]   // API 模型集合
 [JsonSerializable(typeof(ModSourceFolder))]             // Mod 来源项
 [JsonSerializable(typeof(List<ModSourceFolder>))]       // Mod 来源集合
 [JsonSerializable(typeof(Dictionary<string, string>))]   // 翻译内容

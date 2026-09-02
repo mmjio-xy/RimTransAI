@@ -14,9 +14,16 @@ public static class TestDataFactory
     {
         return new AppConfig
         {
-            ApiUrl = "https://api.test.com/v1/chat/completions",
-            ApiKey = "test-api-key",
-            TargetModel = "test-model",
+            TranslationApis =
+            [
+                new TranslationApiProfile
+                {
+                    Name = "Test API",
+                    ApiUrl = "https://api.test.com/v1/chat/completions",
+                    ApiKey = "test-api-key",
+                    Models = [new TranslationApiModel { ModelId = "test-model" }]
+                }
+            ],
             TargetLanguage = "ChineseSimplified",
             AppTheme = "Light",
             AssemblyCSharpPath = "",

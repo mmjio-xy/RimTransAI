@@ -283,64 +283,42 @@
                 <ScrollViewer VerticalScrollBarVisibility="Auto" Padding="5,15,5,5">
                     <StackPanel Spacing="20">
 
-                        <!-- API 地址（必填） -->
-                        <StackPanel Spacing="8">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="API 地址 (Base URL)" Classes="Tertiary"/>
-                                <TextBlock Text=" *" Foreground="#E53935" FontWeight="Bold"/>
+                        <StackPanel Spacing="10">
+                            <StackPanel Orientation="Horizontal" Spacing="6">
+                                <Button Content="添加 API" Command="{Binding AddTranslationApiCommand}" Theme="{DynamicResource OutlineButton}"/>
+                                <Button Content="编辑" Command="{Binding EditSelectedTranslationApiCommand}" Theme="{DynamicResource OutlineButton}"/>
+                                <Button Content="上移" Command="{Binding MoveSelectedTranslationApiUpCommand}" Theme="{DynamicResource OutlineButton}"/>
+                                <Button Content="下移" Command="{Binding MoveSelectedTranslationApiDownCommand}" Theme="{DynamicResource OutlineButton}"/>
+                                <Button Content="删除" Command="{Binding DeleteSelectedTranslationApiCommand}" Theme="{DynamicResource OutlineButton}"/>
                             </StackPanel>
-                            <TextBox Text="{Binding ApiUrl}" PlaceholderText="例如: https://api.openai.com"/>
-                            <!-- 自动补全开关 -->
-                            <Grid ColumnDefinitions="Auto,*" ColumnSpacing="12">
-                                <ToggleSwitch Grid.Column="0"
-                                              IsChecked="{Binding AutoCompleteApiUrl}"
-                                              VerticalAlignment="Center"/>
-                                <TextBlock Grid.Column="1"
-                                           VerticalAlignment="Center"
-                                           FontSize="12"
-                                           Foreground="{DynamicResource SemiColorText3}"
-                                           Text="自动补全 /v1/chat/completions 路径"/>
-                            </Grid>
-                            <TextBlock Text="开启：填写域名即可，程序自动拼接完整路径。&#10;关闭：直接使用您填写的地址，不做任何拼接（适用于自定义代理等非标准路径）。"
-                                       FontSize="11"
-                                       Foreground="{DynamicResource SemiColorText2}"
-                                       TextWrapping="Wrap"/>
-                        </StackPanel>
 
-                        <!-- API Key（必填） -->
-                        <StackPanel Spacing="8">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="API Key (令牌)" Classes="Tertiary"/>
-                                <TextBlock Text=" *" Foreground="#E53935" FontWeight="Bold"/>
-                            </StackPanel>
-                            <TextBox Text="{Binding ApiKey}" PasswordChar="*" PlaceholderText="sk-..." Classes="RevealPasswordButton"/>
-                        </StackPanel>
-
-                        <!-- 模型名称（必填） -->
-                        <StackPanel Spacing="8">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="模型名称 (Model)" Classes="Tertiary"/>
-                                <TextBlock Text=" *" Foreground="#E53935" FontWeight="Bold"/>
-                            </StackPanel>
-                            <TextBox Text="{Binding TargetModel}" PlaceholderText="例如: gpt-3.5-turbo / deepseek-chat"/>
-                        </StackPanel>
-
-                        <!-- 单次请求超时 -->
-                        <StackPanel Spacing="8">
-                            <StackPanel Orientation="Horizontal">
-                                <TextBlock Text="单次请求超时" Classes="Tertiary"/>
-                                <TextBlock Text=" (秒，30-1800)" FontSize="12" Foreground="{DynamicResource SemiColorText3}"/>
-                            </StackPanel>
-                            <NumericUpDown Value="{Binding ApiRequestTimeoutSeconds}"
-                                          Minimum="30"
-                                          Maximum="1800"
-                                          Increment="30"
-                                          FormatString="N0"
-                                          HorizontalAlignment="Left"
-                                          Width="140"/>
-                            <TextBlock Text="用于控制单个批次 API 请求等待时长。请求较慢时建议 480~900 秒。"
-                                       FontSize="12"
-                                       Foreground="{DynamicResource SemiColorText3}"/>
+                            <ListBox ItemsSource="{Binding TranslationApis}"
+                                     SelectedItem="{Binding SelectedTranslationApi}"
+                                     MinHeight="150"
+                                     MaxHeight="300">
+                                <ListBox.ItemTemplate>
+                                    <DataTemplate>
+                                        <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="12" Margin="6">
+                                            <ToggleSwitch Grid.Column="0"
+                                                          IsChecked="{Binding IsEnabled}"
+                                                          OnContent="启用"
+                                                          OffContent="禁用"
+                                                          VerticalAlignment="Center"/>
+                                            <StackPanel Grid.Column="1" Spacing="2">
+                                                <TextBlock Text="{Binding Name}" FontWeight="SemiBold"/>
+                                                <TextBlock Text="{Binding ApiUrl}"
+                                                           FontSize="12"
+                                                           TextTrimming="CharacterEllipsis"
+                                                           Foreground="{DynamicResource SemiColorText3}"/>
+                                            </StackPanel>
+                                            <StackPanel Grid.Column="2" VerticalAlignment="Center" Spacing="2">
+                                                <TextBlock Text="模型" FontSize="12" Foreground="{DynamicResource SemiColorText3}"/>
+                                                <TextBlock Text="{Binding Models.Count}" HorizontalAlignment="Center"/>
+                                            </StackPanel>
+                                        </Grid>
+                                    </DataTemplate>
+                                </ListBox.ItemTemplate>
+                            </ListBox>
                         </StackPanel>
 
                         <!-- 提示词设置 -->

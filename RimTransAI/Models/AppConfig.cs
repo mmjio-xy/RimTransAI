@@ -1,18 +1,29 @@
 using System.Collections.Generic;
+using System.Text.Json.Serialization;
 
 namespace RimTransAI.Models;
 
 public class AppConfig
 {
-    // 默认值
-    public string ApiUrl { get; set; } = "https://api.openai.com";
-    public string ApiKey { get; set; } = "";
-    public string TargetModel { get; set; } = "gpt-3.5-turbo";
+    /// <summary>
+    /// 写入此配置的程序版本。未包含该字段的文件按旧 API 配置格式迁移。
+    /// </summary>
+    [JsonPropertyName("version")]
+    public string Version { get; set; } = CurrentProgramVersion;
+
+    public static string CurrentProgramVersion =>
+        typeof(AppConfig).Assembly.GetName().Version?.ToString(3) ?? "1.0.0";
+
+    /// <summary>
+    /// 按列表顺序参与翻译的 API 配置。
+    /// </summary>
+    public List<TranslationApiProfile> TranslationApis { get; set; } =
+        [TranslationApiProfile.CreateDefault()];
+
     public string TargetLanguage { get; set; } = "ChineseSimplified"; // 默认简中
     public string AppTheme { get; set; } = "Light";
     public string AssemblyCSharpPath { get; set; } = ""; // Assembly-CSharp.dll 路径
     public bool DebugMode { get; set; } = false; // 调试模式开关
-    public bool AutoCompleteApiUrl { get; set; } = true; // 是否自动补全 /v1/chat/completions
 
     // 智能分批配置（高级用户可通过 settings.json 调整）
     public int MaxTokensPerBatch { get; set; } = 3000;  // 每批次最大 Token 数
@@ -28,7 +39,6 @@ public class AppConfig
     public bool EnableMultiThreadTranslation { get; set; } = false; // 是否启用多线程翻译
     public int MaxThreads { get; set; } = 4; // 最大并发线程数（1-10）
     public int ThreadIntervalMs { get; set; } = 100; // 并发请求间隔（毫秒）
-    public int ApiRequestTimeoutSeconds { get; set; } = 480; // 单次 API 请求超时（秒）
 
     // ========== 备份配置 ==========
     /// <summary>

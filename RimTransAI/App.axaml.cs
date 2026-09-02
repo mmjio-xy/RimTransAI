@@ -1,4 +1,5 @@
 using System;
+using System.Linq;
 using System.Threading.Tasks;
 using Avalonia;
 using Avalonia.Controls.ApplicationLifetimes;
@@ -62,7 +63,7 @@ public partial class App : Application
 
             // 2. 启动时应用保存的主题
             var configService = Services.GetRequiredService<ConfigService>();
-            LoggingBootstrap.SetApiKey(configService.CurrentConfig.ApiKey);
+            LoggingBootstrap.SetApiKeys(configService.CurrentConfig.TranslationApis.Select(api => api.ApiKey));
             SetTheme(configService.CurrentConfig.AppTheme);
             _logger.LogInformation("应用主题 Theme={Theme}", configService.CurrentConfig.AppTheme);
 
@@ -70,10 +71,10 @@ public partial class App : Application
             LoggingBootstrap.SetDebugMode(configService.CurrentConfig.DebugMode);
             _logger.LogInformation("调试模式 DebugEnabled={DebugEnabled}", configService.CurrentConfig.DebugMode);
             _logger.LogDebug(
-                "API 配置 ApiUrl={ApiUrl} Model={Model} TimeoutSeconds={TimeoutSeconds}",
-                configService.CurrentConfig.ApiUrl,
-                configService.CurrentConfig.TargetModel,
-                configService.CurrentConfig.ApiRequestTimeoutSeconds);
+                "API 配置已载入 ApiCount={ApiCount} EnabledApiCount={EnabledApiCount} EnabledModelCount={EnabledModelCount}",
+                configService.CurrentConfig.TranslationApis.Count,
+                configService.CurrentConfig.TranslationApis.Count(api => api.IsEnabled),
+                configService.CurrentConfig.TranslationApis.Sum(api => api.Models?.Count(model => model.IsEnabled) ?? 0));
 
             // 4. 启动主窗口
             if (ApplicationLifetime is IClassicDesktopStyleApplicationLifetime desktop)

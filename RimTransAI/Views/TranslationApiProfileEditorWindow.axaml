@@ -1,0 +1,129 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:d="http://schemas.microsoft.com/expression/blend/2008"
+        xmlns:mc="http://schemas.openxmlformats.org/markup-compatibility/2006"
+        xmlns:vm="using:RimTransAI.ViewModels"
+        mc:Ignorable="d"
+        x:Class="RimTransAI.Views.TranslationApiProfileEditorWindow"
+        x:DataType="vm:TranslationApiProfileEditorViewModel"
+        Title="{Binding DialogTitle}"
+        Width="620"
+        Height="680"
+        MinWidth="520"
+        MinHeight="520"
+        WindowStartupLocation="CenterOwner"
+        Background="{DynamicResource SemiColorBackground0}">
+
+    <Grid RowDefinitions="Auto,*,Auto" Margin="0,30,0,0">
+        <TextBlock Grid.Row="0"
+                   Text="{Binding DialogTitle}"
+                   Classes="H4"
+                   Theme="{DynamicResource TitleTextBlock}"
+                   Margin="25,15,25,10"/>
+
+        <ScrollViewer Grid.Row="1" VerticalScrollBarVisibility="Auto" Padding="25,0,25,0">
+            <StackPanel Spacing="16">
+                <Grid ColumnDefinitions="*,Auto">
+                    <StackPanel Grid.Column="0" Spacing="4">
+                        <TextBlock Text="API 名称" Classes="Tertiary"/>
+                        <TextBox Text="{Binding Name}" PlaceholderText="例如：OpenAI 主线路"/>
+                    </StackPanel>
+                    <StackPanel Grid.Column="1" Margin="16,0,0,0" Spacing="4">
+                        <TextBlock Text="状态" Classes="Tertiary"/>
+                        <ToggleSwitch IsChecked="{Binding IsEnabled}" OnContent="启用" OffContent="禁用"/>
+                    </StackPanel>
+                </Grid>
+
+                <StackPanel Spacing="4">
+                    <TextBlock Text="API 地址 (Base URL)" Classes="Tertiary"/>
+                    <TextBox Text="{Binding ApiUrl}" PlaceholderText="例如：https://api.openai.com"/>
+                    <StackPanel Orientation="Horizontal" Spacing="10">
+                        <ToggleSwitch IsChecked="{Binding AutoCompleteApiUrl}"
+                                      OnContent="自动补全路径"
+                                      OffContent="使用完整地址"/>
+                        <TextBlock Text="自动补全时会追加 /v1/chat/completions"
+                                   FontSize="12"
+                                   VerticalAlignment="Center"
+                                   Foreground="{DynamicResource SemiColorText3}"/>
+                    </StackPanel>
+                </StackPanel>
+
+                <StackPanel Spacing="4">
+                    <TextBlock Text="API Key" Classes="Tertiary"/>
+                    <TextBox Text="{Binding ApiKey}"
+                             PasswordChar="*"
+                             Classes="RevealPasswordButton"
+                             PlaceholderText="sk-..."/>
+                </StackPanel>
+
+                <StackPanel Spacing="4">
+                    <TextBlock Text="单次请求超时 (秒)" Classes="Tertiary"/>
+                    <NumericUpDown Value="{Binding RequestTimeoutSeconds}"
+                                  Minimum="30"
+                                  Maximum="1800"
+                                  Increment="30"
+                                  FormatString="N0"
+                                  Width="140"
+                                  HorizontalAlignment="Left"/>
+                </StackPanel>
+
+                <StackPanel Spacing="8">
+                    <Grid ColumnDefinitions="*,Auto">
+                        <StackPanel Grid.Column="0" Spacing="2">
+                            <TextBlock Text="模型" Classes="Tertiary"/>
+                            <TextBlock Text="按此顺序尝试启用的模型。模型 ID 在同一 API 内不能重复。"
+                                       FontSize="12"
+                                       Foreground="{DynamicResource SemiColorText3}"/>
+                        </StackPanel>
+                        <StackPanel Grid.Column="1" Orientation="Horizontal" Spacing="6">
+                            <Button Content="添加模型" Command="{Binding AddModelCommand}" Theme="{DynamicResource OutlineButton}"/>
+                            <Button Content="上移" Command="{Binding MoveSelectedModelUpCommand}" Theme="{DynamicResource OutlineButton}"/>
+                            <Button Content="下移" Command="{Binding MoveSelectedModelDownCommand}" Theme="{DynamicResource OutlineButton}"/>
+                            <Button Content="删除" Command="{Binding DeleteSelectedModelCommand}" Theme="{DynamicResource OutlineButton}"/>
+                        </StackPanel>
+                    </Grid>
+                    <ListBox ItemsSource="{Binding Models}"
+                             SelectedItem="{Binding SelectedModel}"
+                             MinHeight="100"
+                             MaxHeight="230">
+                        <ListBox.ItemTemplate>
+                            <DataTemplate>
+                                <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="10" Margin="4">
+                                    <ToggleSwitch Grid.Column="0"
+                                                  IsChecked="{Binding IsEnabled}"
+                                                  OnContent="启用"
+                                                  OffContent="禁用"
+                                                  VerticalAlignment="Center"/>
+                                    <TextBox Grid.Column="1"
+                                             Text="{Binding ModelId}"
+                                             PlaceholderText="例如：gpt-4o-mini"
+                                             VerticalAlignment="Center"/>
+                                    <TextBlock Grid.Column="2"
+                                               Text="Model ID"
+                                               FontSize="12"
+                                               VerticalAlignment="Center"
+                                               Foreground="{DynamicResource SemiColorText3}"/>
+                                </Grid>
+                            </DataTemplate>
+                        </ListBox.ItemTemplate>
+                    </ListBox>
+                </StackPanel>
+            </StackPanel>
+        </ScrollViewer>
+
+        <Border Grid.Row="2" Padding="25,15,25,20">
+            <StackPanel>
+                <TextBlock Text="{Binding ValidationError}"
+                           Foreground="#E53935"
+                           FontSize="13"
+                           Margin="0,0,0,10"
+                           TextWrapping="Wrap"
+                           IsVisible="{Binding HasValidationError}"/>
+                <StackPanel Orientation="Horizontal" HorizontalAlignment="Right" Spacing="12">
+                    <Button Content="取消" Command="{Binding CancelCommand}" Theme="{DynamicResource TertiaryButton}" Width="90"/>
+                    <Button Content="保存" Command="{Binding SaveCommand}" Theme="{DynamicResource SolidButton}" Classes="Primary" Width="90"/>
+                </StackPanel>
+            </StackPanel>
+        </Border>
+    </Grid>
+</Window>
