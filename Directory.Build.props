@@ -1,5 +1,12 @@
 <Project>
+  <Import Project="Version.props" />
+
   <PropertyGroup>
+    <Version>$(RimTransAIProductVersion)</Version>
+    <AssemblyVersion>$(RimTransAIProductVersion).0</AssemblyVersion>
+    <FileVersion>$(RimTransAIProductVersion).0</FileVersion>
+    <InformationalVersion>$(RimTransAIProductVersion)</InformationalVersion>
+    <IncludeSourceRevisionInInformationalVersion>false</IncludeSourceRevisionInInformationalVersion>
     <Nullable>enable</Nullable>
     <Deterministic>true</Deterministic>
     <RestorePackagesWithLockFile>true</RestorePackagesWithLockFile>

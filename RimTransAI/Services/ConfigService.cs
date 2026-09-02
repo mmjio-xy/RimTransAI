@@ -14,6 +14,7 @@ public class ConfigService
     private const string FileName = "settings.json";
     private readonly string _filePath;
     private readonly ILogger<ConfigService> _logger;
+    private bool _isReadOnlyDueToFutureConfig;
 
     public ConfigService(ILogger<ConfigService>? logger = null, string? filePath = null)
     {
@@ -28,6 +29,8 @@ public class ConfigService
 
     public void LoadConfig()
     {
+        _isReadOnlyDueToFutureConfig = false;
+
         if (File.Exists(_filePath))
         {
             try
@@ -37,6 +40,9 @@ public class ConfigService
                                 ?? new AppConfig();
 
                 var requiresLegacyApiMigration = DoesNotContainVersion(json);
+                var hasConfigVersion = TryGetConfigVersion(json, out var configVersion);
+                var futureConfigVersion = hasConfigVersion &&
+                                          configVersion > AppConfig.CurrentConfigVersion;
                 if (requiresLegacyApiMigration)
                 {
                     var legacyApiSettings = JsonSerializer.Deserialize(
@@ -64,17 +70,41 @@ public class ConfigService
                     ];
                 }
 
+                _isReadOnlyDueToFutureConfig = futureConfigVersion;
+                var requiresConfigVersionUpgrade = !requiresLegacyApiMigration && !hasConfigVersion;
+
                 NormalizeConfig(CurrentConfig);
+
+                if (futureConfigVersion)
+                {
+                    // 保留未来版本标记，避免内存中的配置看起来像当前格式。
+                    CurrentConfig.Version = ReadVersion(json, CurrentConfig.Version);
+                    CurrentConfig.ConfigVersion = configVersion;
+                }
 
                 NormalizeModSourceFolders(CurrentConfig);
 
-                if (requiresLegacyApiMigration && !SaveConfig(CurrentConfig))
+                if (_isReadOnlyDueToFutureConfig)
                 {
-                    _logger.LogUserWarning("旧 API 配置已载入，但迁移后的配置写回失败：{ConfigPath}", _filePath);
+                    _logger.LogUserWarning(
+                        "配置文件结构版本 {ConfigVersion} 高于当前支持版本 {CurrentConfigVersion}，已以只读方式载入：{ConfigPath}",
+                        configVersion,
+                        AppConfig.CurrentConfigVersion,
+                        _filePath);
+                }
+                else if ((requiresLegacyApiMigration || requiresConfigVersionUpgrade) && !SaveConfig(CurrentConfig))
+                {
+                    _logger.LogUserWarning("配置已载入，但升级后的配置写回失败：{ConfigPath}", _filePath);
                 }
                 else if (requiresLegacyApiMigration)
                 {
                     _logger.LogInformation("已将旧 API 配置迁移为多 API 配置 ConfigPath={ConfigPath}", _filePath);
+                }
+                else if (requiresConfigVersionUpgrade)
+                {
+                    _logger.LogInformation("已补写配置结构版本 ConfigVersion={ConfigVersion} ConfigPath={ConfigPath}",
+                        AppConfig.CurrentConfigVersion,
+                        _filePath);
                 }
 
                 return;
@@ -100,6 +130,14 @@ public class ConfigService
     {
         try
         {
+            if (_isReadOnlyDueToFutureConfig)
+            {
+                _logger.LogUserWarning(
+                    "配置文件结构版本高于当前支持版本，已阻止保存以避免覆盖未知字段：{ConfigPath}",
+                    _filePath);
+                return false;
+            }
+
             NormalizeConfig(config);
 
             // 使用 AOT 友好的序列化方法
@@ -122,6 +160,7 @@ public class ConfigService
         ArgumentNullException.ThrowIfNull(config);
 
         config.Version = AppConfig.CurrentProgramVersion;
+        config.ConfigVersion = AppConfig.CurrentConfigVersion;
         config.MaxThreads = Math.Clamp(config.MaxThreads, 1, 10);
         config.ThreadIntervalMs = Math.Clamp(config.ThreadIntervalMs, 0, 1000);
         config.TranslationApis ??= new List<TranslationApiProfile>();
@@ -147,6 +186,44 @@ public class ConfigService
         return document.RootElement.ValueKind != JsonValueKind.Object ||
                !document.RootElement.EnumerateObject()
                    .Any(property => string.Equals(property.Name, "version", StringComparison.OrdinalIgnoreCase));
+    }
+
+    private static bool TryGetConfigVersion(string json, out int configVersion)
+    {
+        using var document = JsonDocument.Parse(json);
+        if (document.RootElement.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in document.RootElement.EnumerateObject())
+            {
+                if (string.Equals(property.Name, "configVersion", StringComparison.OrdinalIgnoreCase) &&
+                    property.Value.ValueKind == JsonValueKind.Number &&
+                    property.Value.TryGetInt32(out configVersion))
+                {
+                    return true;
+                }
+            }
+        }
+
+        configVersion = 0;
+        return false;
+    }
+
+    private static string ReadVersion(string json, string fallback)
+    {
+        using var document = JsonDocument.Parse(json);
+        if (document.RootElement.ValueKind == JsonValueKind.Object)
+        {
+            foreach (var property in document.RootElement.EnumerateObject())
+            {
+                if (string.Equals(property.Name, "version", StringComparison.OrdinalIgnoreCase) &&
+                    property.Value.ValueKind == JsonValueKind.String)
+                {
+                    return property.Value.GetString() ?? fallback;
+                }
+            }
+        }
+
+        return fallback;
     }
 
     private static void NormalizeModSourceFolders(AppConfig config)

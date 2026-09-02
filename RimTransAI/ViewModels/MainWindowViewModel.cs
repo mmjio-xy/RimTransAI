@@ -63,8 +63,7 @@ public partial class MainWindowViewModel : ViewModelBase
 
     private static string BuildAppDisplayTitle()
     {
-        var version = typeof(global::RimTransAI.App).Assembly.GetName().Version?.ToString(3) ?? "1.0.0";
-        return $"RimTrans AI v{version}";
+        return $"RimTrans AI v{AppConfig.CurrentProgramVersion}";
     }
 
     partial void OnLogOutputChanged(string value)

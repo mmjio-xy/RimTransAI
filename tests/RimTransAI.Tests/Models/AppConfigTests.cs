@@ -12,6 +12,7 @@ public class AppConfigTests
         var config = new AppConfig();
 
         config.Version.Should().Be(AppConfig.CurrentProgramVersion);
+        config.ConfigVersion.Should().Be(AppConfig.CurrentConfigVersion);
         config.TranslationApis.Should().ContainSingle();
         config.TranslationApis[0].Name.Should().Be("默认 API");
         config.TranslationApis[0].IsEnabled.Should().BeTrue();

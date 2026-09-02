@@ -78,9 +78,22 @@ jobs:
         id: metadata
         shell: pwsh
         run: |
-          $version = "$env:GITHUB_REF_NAME"
+          [xml]$versionProps = Get-Content ./Version.props
+          $version = ([string]$versionProps.Project.PropertyGroup.RimTransAIProductVersion).Trim()
           if ([string]::IsNullOrWhiteSpace($version)) {
-            $version = "manual-$env:GITHUB_RUN_NUMBER"
+            throw "Version.props 未设置 RimTransAIProductVersion"
+          }
+
+          $refName = "$env:GITHUB_REF_NAME"
+          if ($env:GITHUB_REF -like 'refs/tags/*') {
+            $expectedTag = "v$version"
+            if ($refName -ne $expectedTag) {
+              throw "发布标签 $refName 与 Version.props 中的产品版本不一致，应为 $expectedTag"
+            }
+            $releaseTag = $refName
+          }
+          else {
+            $releaseTag = "manual-$env:GITHUB_RUN_NUMBER"
           }
 
           $shortSha = (git rev-parse --short HEAD).Trim()
@@ -88,6 +101,7 @@ jobs:
           $liteZipName = "RimTransAI-$version-win-x64-lite-$shortSha.zip"
 
           "version=$version" >> $env:GITHUB_OUTPUT
+          "release_tag=$releaseTag" >> $env:GITHUB_OUTPUT
           "short_sha=$shortSha" >> $env:GITHUB_OUTPUT
           "native_zip_name=$nativeZipName" >> $env:GITHUB_OUTPUT
           "lite_zip_name=$liteZipName" >> $env:GITHUB_OUTPUT
@@ -97,7 +111,7 @@ jobs:
         id: changelog
         shell: pwsh
         run: |
-          $currentTag = "${{ steps.metadata.outputs.version }}"
+          $currentTag = "${{ steps.metadata.outputs.release_tag }}"
           $previousTag = git tag --list "v*" --sort=-creatordate | Where-Object { $_ -ne $currentTag } | Select-Object -First 1
 
           $header = "## $currentTag"

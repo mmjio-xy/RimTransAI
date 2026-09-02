@@ -42,6 +42,8 @@ public class AppJsonContextTests
         using var document = JsonDocument.Parse(json);
 
         document.RootElement.EnumerateObject().First().Name.Should().Be("version");
+        document.RootElement.EnumerateObject().Skip(1).First().Name.Should().Be("configVersion");
+        document.RootElement.GetProperty("configVersion").GetInt32().Should().Be(AppConfig.CurrentConfigVersion);
         json.Should().Contain("\"TranslationApis\"");
         json.Should().NotContain("\"ApiRequestTimeoutSeconds\"");
         json.Should().NotContain("\"IconKind\"");

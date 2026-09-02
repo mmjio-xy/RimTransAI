@@ -33,6 +33,7 @@ public class ConfigServiceTests
         ConfigService.NormalizeConfig(config);
 
         config.Version.Should().Be(AppConfig.CurrentProgramVersion);
+        config.ConfigVersion.Should().Be(AppConfig.CurrentConfigVersion);
         config.MaxThreads.Should().Be(1);
         config.ThreadIntervalMs.Should().Be(1000);
         config.TranslationApis[0].Name.Should().Be("Primary");
@@ -114,6 +115,7 @@ public class ConfigServiceTests
         api.Models.Should().ContainSingle();
         api.Models[0].ModelId.Should().Be("legacy-model");
         document.RootElement.EnumerateObject().First().Name.Should().Be("version");
+        document.RootElement.GetProperty("configVersion").GetInt32().Should().Be(AppConfig.CurrentConfigVersion);
         migratedJson.Should().NotContain("ApiRequestTimeoutSeconds");
         migratedJson.Should().NotContain("TargetModel");
     }
@@ -138,6 +140,66 @@ public class ConfigServiceTests
         service.CurrentConfig.TranslationApis.Should().ContainSingle();
         service.CurrentConfig.TranslationApis[0].ApiUrl.Should().Be("https://api.openai.com");
         service.CurrentConfig.TranslationApis[0].ApiKey.Should().BeEmpty();
+    }
+
+    [Fact]
+    public void LoadConfig_WithProductVersionButNoConfigVersion_AddsCurrentConfigVersion()
+    {
+        using var scope = new TemporaryConfigFile();
+        File.WriteAllText(
+            scope.FilePath,
+            """
+            {
+              "version": "2.0.0",
+              "TranslationApis": []
+            }
+            """);
+
+        var service = new ConfigService(filePath: scope.FilePath);
+        using var document = JsonDocument.Parse(File.ReadAllText(scope.FilePath));
+
+        service.CurrentConfig.ConfigVersion.Should().Be(AppConfig.CurrentConfigVersion);
+        document.RootElement.GetProperty("configVersion").GetInt32().Should().Be(AppConfig.CurrentConfigVersion);
+    }
+
+    [Fact]
+    public void LoadConfig_WithFutureConfigVersion_IsReadOnlyAndCannotOverwriteFile()
+    {
+        using var scope = new TemporaryConfigFile();
+        const string futureJson = """
+        {
+          "version": "2.0.0",
+          "configVersion": 99,
+          "TranslationApis": []
+        }
+        """;
+        File.WriteAllText(scope.FilePath, futureJson);
+        var logger = new RecordingLogger<ConfigService>();
+        var service = new ConfigService(logger, scope.FilePath);
+
+        var saved = service.SaveConfig(new AppConfig());
+
+        saved.Should().BeFalse();
+        service.CurrentConfig.Version.Should().Be("2.0.0");
+        service.CurrentConfig.ConfigVersion.Should().Be(99);
+        File.ReadAllText(scope.FilePath).Should().Be(futureJson);
+        logger.Records.Should().Contain(record =>
+            record.Level == Microsoft.Extensions.Logging.LogLevel.Warning &&
+            record.Message.Contains("只读", StringComparison.Ordinal));
+    }
+
+    [Fact]
+    public void LoadConfig_AfterFutureConfigFileIsRemoved_AllowsSavingAgain()
+    {
+        using var scope = new TemporaryConfigFile();
+        File.WriteAllText(scope.FilePath, "{ \"version\": \"2.0.0\", \"configVersion\": 99 }");
+        var service = new ConfigService(filePath: scope.FilePath);
+
+        File.Delete(scope.FilePath);
+        service.LoadConfig();
+
+        service.SaveConfig(new AppConfig()).Should().BeTrue();
+        File.Exists(scope.FilePath).Should().BeTrue();
     }
 
     [Fact]

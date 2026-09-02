@@ -5,14 +5,22 @@ namespace RimTransAI.Models;
 
 public class AppConfig
 {
+    public const int CurrentConfigVersion = 2;
+
     /// <summary>
     /// 写入此配置的程序版本。未包含该字段的文件按旧 API 配置格式迁移。
     /// </summary>
     [JsonPropertyName("version")]
     public string Version { get; set; } = CurrentProgramVersion;
 
+    /// <summary>
+    /// 设置文件结构版本，仅在结构发生不兼容变化时递增。
+    /// </summary>
+    [JsonPropertyName("configVersion")]
+    public int ConfigVersion { get; set; } = CurrentConfigVersion;
+
     public static string CurrentProgramVersion =>
-        typeof(AppConfig).Assembly.GetName().Version?.ToString(3) ?? "1.0.0";
+        typeof(AppConfig).Assembly.GetName().Version?.ToString(3) ?? "0.0.0";
 
     /// <summary>
     /// 按列表顺序参与翻译的 API 配置。

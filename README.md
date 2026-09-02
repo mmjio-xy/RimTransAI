@@ -33,6 +33,14 @@ RimTransAI 是一个用于 RimWorld Mod 汉化的桌面应用。它会扫描 Mod
 - .NET 9 SDK
 - Windows（当前主要验证平台）
 
+## 版本管理
+
+- 产品版本唯一维护在根目录 `Version.props` 的 `RimTransAIProductVersion` 中。
+- 程序集版本、文件版本、配置文件中的 `version` 以及发布包名称均由该值生成。
+- GitHub 发布标签必须严格使用 `v<产品版本>` 格式，例如 `v2.0.0`。
+- 设置文件中的 `configVersion` 是配置结构版本，仅在发生破坏性结构变更时递增；没有 `version` 的旧设置会在首次启动时自动迁移。
+- `global.json` 中的 .NET SDK 版本独立于产品版本，仅用于约束构建环境。
+
 ## 快速开始
 
 ```bash
