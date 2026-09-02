@@ -1,0 +1,77 @@
+<Window xmlns="https://github.com/avaloniaui"
+        xmlns:x="http://schemas.microsoft.com/winfx/2006/xaml"
+        xmlns:vm="using:RimTransAI.LocalTranslator.ViewModels"
+        xmlns:controls="using:RimTransAI.LocalTranslator.Controls"
+        x:Class="RimTransAI.LocalTranslator.Views.MainWindow"
+        x:DataType="vm:MainWindowViewModel"
+        Width="700" Height="560" MinWidth="620" MinHeight="500"
+        Title="RimTransAI 本地翻译服务"
+        WindowStartupLocation="CenterScreen">
+  <Grid RowDefinitions="Auto,*,Auto" Margin="28" RowSpacing="22">
+    <Grid ColumnDefinitions="*,Auto" ColumnSpacing="16">
+      <StackPanel Spacing="6">
+        <TextBlock FontSize="25" FontWeight="SemiBold" Text="本地翻译服务" />
+        <TextBlock Opacity="0.72" Text="英译简中 · OpenAI 兼容接口 · 仅本机访问" />
+      </StackPanel>
+      <Border Grid.Column="1" Padding="12,7" BorderBrush="{DynamicResource SystemControlForegroundBaseMediumBrush}" BorderThickness="1" CornerRadius="4" VerticalAlignment="Center">
+        <TextBlock FontWeight="SemiBold" Text="{Binding StatusText}" />
+      </Border>
+    </Grid>
+
+    <ScrollViewer Grid.Row="1" HorizontalScrollBarVisibility="Disabled">
+      <StackPanel Spacing="18">
+        <Border Padding="16" Background="{DynamicResource SystemControlBackgroundAltHighBrush}" CornerRadius="5">
+          <Grid ColumnDefinitions="Auto,*,Auto" ColumnSpacing="14">
+            <controls:LoadingRing Width="30" Height="30" VerticalAlignment="Center"
+                                  IsActive="{Binding IsModelLoading}"
+                                  IsVisible="{Binding IsModelLoading}" />
+            <StackPanel Grid.Column="1" Spacing="6">
+              <TextBlock FontWeight="SemiBold" Text="服务地址" />
+              <TextBlock FontSize="18" Text="{Binding Endpoint}" />
+              <TextBlock Opacity="0.72" Text="{Binding StatusDetail}" TextWrapping="Wrap" />
+            </StackPanel>
+            <Button Grid.Column="2" VerticalAlignment="Center" Click="CopyEndpoint_Click" Content="复制" />
+          </Grid>
+        </Border>
+
+        <StackPanel Spacing="8" IsEnabled="{Binding CanEditSettings}">
+          <TextBlock FontWeight="SemiBold" Text="模型文件" />
+          <Grid ColumnDefinitions="*,Auto" ColumnSpacing="10">
+            <TextBox Text="{Binding ModelPath}" PlaceholderText="请选择 Hy-MT2 的 GGUF 模型文件" />
+            <Button Grid.Column="1" Click="BrowseModel_Click" Content="浏览" />
+          </Grid>
+        </StackPanel>
+
+        <Grid ColumnDefinitions="*,*" ColumnSpacing="16" IsEnabled="{Binding CanEditSettings}">
+          <StackPanel Spacing="8">
+            <TextBlock FontWeight="SemiBold" Text="本地端口" />
+            <NumericUpDown Minimum="1" Maximum="65535" Value="{Binding Port}" />
+          </StackPanel>
+          <StackPanel Grid.Column="1" Spacing="8">
+            <TextBlock FontWeight="SemiBold" Text="上下文长度" />
+            <NumericUpDown Minimum="512" Maximum="32768" Increment="512" Value="{Binding ContextSize}" />
+          </StackPanel>
+        </Grid>
+
+        <Grid ColumnDefinitions="*,*" ColumnSpacing="16" IsEnabled="{Binding CanEditSettings}">
+          <StackPanel Spacing="8">
+            <TextBlock FontWeight="SemiBold" Text="单条最大输出 Token" />
+            <NumericUpDown Minimum="1" Maximum="4096" Value="{Binding MaxTokensPerItem}" />
+          </StackPanel>
+          <StackPanel Grid.Column="1" Spacing="8">
+            <TextBlock FontWeight="SemiBold" Text="每批最多文本条数" />
+            <NumericUpDown Minimum="1" Maximum="500" Value="{Binding MaxItemsPerRequest}" />
+          </StackPanel>
+        </Grid>
+
+        <TextBlock IsVisible="{Binding IsServiceRunning}" Opacity="0.72" Text="服务运行期间配置已锁定。停止服务后可修改。" />
+      </StackPanel>
+    </ScrollViewer>
+
+    <Grid Grid.Row="2" ColumnDefinitions="*,Auto,Auto" ColumnSpacing="10">
+      <TextBlock VerticalAlignment="Center" Opacity="0.68" Text="关闭窗口会继续在系统托盘中运行。" />
+      <Button Grid.Column="1" Command="{Binding StopServiceCommand}" IsEnabled="{Binding IsServiceRunning}" Content="停止服务" />
+      <Button Grid.Column="2" Command="{Binding StartServiceCommand}" IsEnabled="{Binding CanEditSettings}" IsDefault="True" Content="启动服务" />
+    </Grid>
+  </Grid>
+</Window>
