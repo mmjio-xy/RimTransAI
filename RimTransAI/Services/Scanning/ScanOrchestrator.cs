@@ -49,6 +49,8 @@ public sealed class ScanOrchestrator
             {
                 LoadFolderFallbackDueToError = _loadOrderPlanner.LastPlanUsedFallbackDueToError,
                 LoadFolderCount = loadFolders.Count,
+                LoadFolderVersionKey = _loadOrderPlanner.LastSelectedVersionKey,
+                DetectedLanguageArchives = [.. _languageDirectoryResolver.DetectedLanguageArchives],
                 LanguageDirectoryCount = languageDirectories.Count,
                 DefFileCount = sources.DefFiles.Count,
                 KeyedFileCount = sources.KeyedFiles.Count,

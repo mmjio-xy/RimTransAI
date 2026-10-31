@@ -74,8 +74,9 @@ public class ModParserService
             _logger.ErrorMessage("2. Assembly-CSharp.dll 文件不存在或损坏");
             _logger.ErrorMessage("========================================");
             _logger.InfoMessage("请先在【参数设置】中配置 Assembly-CSharp.dll 的路径");
-            _logger.InfoMessage("Assembly-CSharp.dll 通常位于：");
-            _logger.InfoMessage("  Steam: steamapps/common/RimWorld/RimWorldWin64_Data/Managed/Assembly-CSharp.dll");
+            _logger.InfoMessage("Assembly-CSharp.dll 的位置因游戏版本而异：");
+            _logger.InfoMessage($"  {RimWorldAssemblyLocator.ExpectedLayoutsHint}");
+            _logger.InfoMessage("  Steam: steamapps/common/RimWorld/ 即为游戏根目录");
             _logger.ErrorMessage("========================================");
             return items;
         }
@@ -98,8 +99,10 @@ public class ModParserService
 
         _logger.InfoMessage(
             $"阶段 1/3 目录规划: LoadFolders={scanResult.Diagnostics.LoadFolderCount}, " +
+            $"LoadFoldersVersion={(string.IsNullOrEmpty(scanResult.Diagnostics.LoadFolderVersionKey) ? "(目录扫描)" : scanResult.Diagnostics.LoadFolderVersionKey)}, " +
             $"FallbackDueToError={scanResult.Diagnostics.LoadFolderFallbackDueToError}, " +
-            $"LanguageDirs={scanResult.Diagnostics.LanguageDirectoryCount}");
+            $"LanguageDirs={scanResult.Diagnostics.LanguageDirectoryCount}, " +
+            $"LanguageArchives={scanResult.Diagnostics.DetectedLanguageArchives.Count}");
         _logger.InfoMessage(
             $"阶段 2/3 文件收集: Defs={scanResult.Diagnostics.DefFileCount}, " +
             $"Keyed={scanResult.Diagnostics.KeyedFileCount}, " +
@@ -115,6 +118,14 @@ public class ModParserService
             $"Conflicts={scanResult.Diagnostics.ExtractionConflictCount}, " +
             $"Errors={scanResult.Diagnostics.ExtractionErrorCount}");
 
+        foreach (var archive in scanResult.Diagnostics.DetectedLanguageArchives)
+        {
+            _logger.LogUserWarning(
+                "检测到语言压缩包：{ArchivePath}。1.7 引擎会优先读取 .tar 并忽略同名目录，" +
+                "扫描与写入的散文件都不会生效；请先解包（或删除/重命名该 tar）后重新扫描。",
+                archive);
+        }
+
         _logger.InfoMessage("========================================");
         _logger.InfoMessage("扫描完成");
         var keyedCount = items.Count(x => x.DefType == "Keyed");
@@ -126,10 +137,28 @@ public class ModParserService
         return items;
     }
 
+    /// <summary>
+    /// 解析核心程序集路径：优先使用用户配置，失效时自动探测（Mod 目录向上回溯 / Steam / GOG）。
+    /// </summary>
+    private string? ResolveCoreAssemblyPath(string? hintDirectory)
+    {
+        var configured = _configService.CurrentConfig.AssemblyCSharpPath;
+        var resolved = RimWorldAssemblyLocator.Resolve(configured, hintDirectory);
+
+        if (resolved != null && !RimWorldAssemblyLocator.IsValidAssembly(configured))
+        {
+            _logger.InfoMessage(string.IsNullOrWhiteSpace(configured)
+                ? $"已自动定位核心程序集: {resolved}"
+                : $"已配置的 Assembly-CSharp.dll 不可用，自动改用: {resolved}");
+        }
+
+        return resolved;
+    }
+
     private string ResolveCurrentGameVersion(string modPath)
     {
-        var coreAssemblyPath = _configService.CurrentConfig.AssemblyCSharpPath;
-        if (!string.IsNullOrWhiteSpace(coreAssemblyPath) && File.Exists(coreAssemblyPath))
+        var coreAssemblyPath = ResolveCoreAssemblyPath(modPath);
+        if (coreAssemblyPath != null)
         {
             try
             {
@@ -150,6 +179,13 @@ public class ModParserService
             {
                 _logger.WarningMessage($"读取 Assembly-CSharp.dll 版本失败: {ex.Message}");
             }
+
+            // 1.7 自研引擎的核心程序集可能不带可用版本信息，回退读取游戏根目录的 Version.txt
+            var versionFromFile = TryReadGameVersionFile(coreAssemblyPath);
+            if (!string.IsNullOrWhiteSpace(versionFromFile))
+            {
+                return versionFromFile;
+            }
         }
 
         var fallback = Directory
@@ -160,6 +196,37 @@ public class ModParserService
             .FirstOrDefault();
 
         return fallback ?? string.Empty;
+    }
+
+    /// <summary>
+    /// 从核心程序集向上查找游戏根目录的 Version.txt（如 "1.7.4990 rev1069"），提取主次版本号。
+    /// </summary>
+    private static string TryReadGameVersionFile(string coreAssemblyPath)
+    {
+        try
+        {
+            var directory = Path.GetDirectoryName(coreAssemblyPath);
+            for (var depth = 0; depth < 3 && !string.IsNullOrEmpty(directory); depth++)
+            {
+                var versionFile = Path.Combine(directory, "Version.txt");
+                if (File.Exists(versionFile))
+                {
+                    var version = ExtractMajorMinorVersion(File.ReadAllText(versionFile));
+                    if (!string.IsNullOrWhiteSpace(version))
+                    {
+                        return version;
+                    }
+                }
+
+                directory = Path.GetDirectoryName(directory);
+            }
+        }
+        catch (Exception)
+        {
+            // 版本信息读取失败不影响扫描，继续使用其它回退策略
+        }
+
+        return string.Empty;
     }
 
     private static string ExtractMajorMinorVersion(string? rawVersion)
@@ -245,10 +312,13 @@ public class ModParserService
         try
         {
             // ========== 第一步：强制加载核心程序集 ==========
-            string corePath = _configService.CurrentConfig.AssemblyCSharpPath;
-            if (string.IsNullOrWhiteSpace(corePath) || !File.Exists(corePath))
+            // 1.7 起核心程序集位于游戏根目录；旧版位于 RimWorldWin64_Data\Managed。
+            // 配置为空或失效时，尝试从 Mod 目录向上回溯，并探测 Steam/GOG 常见安装位置。
+            string? corePath = ResolveCoreAssemblyPath(modPath);
+            if (corePath == null)
             {
                 _logger.ErrorMessage("错误：未配置或找不到 Assembly-CSharp.dll，请在设置中配置");
+                _logger.InfoMessage($"预期位置：{RimWorldAssemblyLocator.ExpectedLayoutsHint}");
                 return null;
             }
 

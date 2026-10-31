@@ -115,13 +115,65 @@ public sealed class FieldExtractionRuleSet
             return true;
         }
 
-        var span = fieldName.AsSpan();
         foreach (var keyword in BlacklistKeywords)
         {
-            if (span.Contains(keyword.AsSpan(), StringComparison.OrdinalIgnoreCase))
+            if (MatchesKeyword(fieldName.AsSpan(), keyword.AsSpan()))
             {
                 return true;
             }
+        }
+
+        return false;
+    }
+
+    /// <summary>
+    /// 判断字段名是否完整命中某个关键字（按 camelCase / 下划线 / 数字边界切词，允许复数形式）。
+    /// 旧实现用原子串包含，"tag" 会误杀 stages / lifeStages / scoreStages 等字段，
+    /// 导致 PawnKindDef.lifeStages、ThoughtDef.stages 整棵子树被跳过。
+    /// </summary>
+    private static bool MatchesKeyword(ReadOnlySpan<char> fieldName, ReadOnlySpan<char> keyword)
+    {
+        if (keyword.IsEmpty || fieldName.IsEmpty)
+        {
+            return false;
+        }
+
+        var wordStart = 0;
+        for (var i = 0; i <= fieldName.Length; i++)
+        {
+            var isBoundary = i == fieldName.Length || fieldName[i] == '_';
+            if (!isBoundary && i > wordStart)
+            {
+                var previous = fieldName[i - 1];
+                var current = fieldName[i];
+                isBoundary =
+                    (char.IsLower(previous) && char.IsUpper(current)) ||
+                    (char.IsLetter(previous) && char.IsDigit(current)) ||
+                    (char.IsDigit(previous) && char.IsLetter(current)) ||
+                    (char.IsUpper(previous) && char.IsUpper(current) &&
+                     i + 1 < fieldName.Length && char.IsLower(fieldName[i + 1]));
+            }
+
+            if (!isBoundary)
+            {
+                continue;
+            }
+
+            var word = fieldName[wordStart..i];
+            if (word.Equals(keyword, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            // 允许复数形式（tags 命中关键字 tag）
+            if (word.Length == keyword.Length + 1 &&
+                (word[^1] == 's' || word[^1] == 'S') &&
+                word[..^1].Equals(keyword, StringComparison.OrdinalIgnoreCase))
+            {
+                return true;
+            }
+
+            wordStart = i;
         }
 
         return false;

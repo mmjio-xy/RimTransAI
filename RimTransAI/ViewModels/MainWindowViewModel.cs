@@ -393,10 +393,12 @@ public partial class MainWindowViewModel : ViewModelBase
         }
 
         var config = _configService.CurrentConfig;
-        if (string.IsNullOrWhiteSpace(config.AssemblyCSharpPath))
+        // 路径可能未配置或已失效（1.7 起核心程序集从 *_Data/Managed 移到游戏根目录），
+        // 这里按“已配置 → 从 Mod 目录回溯 → Steam/GOG 探测”的顺序解析一次。
+        if (RimWorldAssemblyLocator.Resolve(config.AssemblyCSharpPath, SelectedMod.ModPath) == null)
         {
-            LogOutput = "错误：未配置 Assembly-CSharp.dll 路径，请先前往设置页面配置。";
-            _logger.LogUserWarning("未配置 Assembly-CSharp.dll 路径，请先前往设置页面配置");
+            LogOutput = "错误：未找到 Assembly-CSharp.dll，请先在设置页面配置游戏核心程序集路径。";
+            _logger.LogUserWarning("未找到 Assembly-CSharp.dll，请先前往设置页面配置");
             await OpenSettings();
             return;
         }
@@ -912,11 +914,27 @@ public partial class MainWindowViewModel : ViewModelBase
             int deletedCount = generationResult.DeletedFileCount;
             int changedCount = generationResult.ChangedFileCount;
 
+            var shadowedArchives = generationResult.ShadowedArchives;
+            var hasWriteFailures = generationResult.FailedFileCount > 0 || generationResult.FailedNodeCount > 0;
+
             LogOutput = changedCount == 0 && generationResult.IsCompleteSuccess
                 ? "没有需要写入或删除的翻译文件。"
                 : generationResult.IsCompleteSuccess
                     ? $"保存成功！生成 {count} 个文件，删除 {deletedCount} 个旧文件。"
-                    : $"部分保存成功：生成 {count} 个文件，删除 {deletedCount} 个旧文件，另有失败项。";
+                    : !hasWriteFailures && shadowedArchives.Count > 0
+                        ? $"已生成 {count} 个文件，删除 {deletedCount} 个旧文件；但目标语言目录存在 .tar 压缩包，游戏不会读取本次输出。"
+                        : $"部分保存成功：生成 {count} 个文件，删除 {deletedCount} 个旧文件，另有失败项。";
+
+            if (shadowedArchives.Count > 0)
+            {
+                LogOutput += "\n1.7 引擎优先读取 Languages 下的语言 .tar，散文件会被忽略：" +
+                             "\n  " + string.Join("\n  ", shadowedArchives) +
+                             "\n请备份后删除或重命名该压缩包，再重新生成。";
+                _logger.LogUserWarning(
+                    "目标语言目录被 .tar 压缩包遮蔽，本次生成的散文件不会生效（{ArchiveCount} 个）：{Archives}",
+                    shadowedArchives.Count,
+                    string.Join("; ", shadowedArchives));
+            }
 
             IReadOnlyList<string> backupPaths = [];
             var backupVersionCount = generationResult.SuccessfulVersions.Count;

@@ -359,4 +359,60 @@ public class FileGeneratorServiceTests : IDisposable
         var lines = File.ReadAllLines(outputPath);
         lines.Should().Equal("熊", "狼", "狐");
     }
+
+    [Fact]
+    public void GenerateFilesDetailed_WhenLanguageArchiveShadowsTarget_ReportsShadowedArchive()
+    {
+        var contentRoot = Path.Combine(_tempDir, "1.7");
+        var languagesRoot = Path.Combine(contentRoot, "Languages");
+        Directory.CreateDirectory(languagesRoot);
+        var archive = Path.Combine(languagesRoot, "ChineseSimplified.tar");
+        File.WriteAllBytes(archive, [0x00]);
+
+        var items = new List<TranslationItem>
+        {
+            new()
+            {
+                DefType = "Keyed",
+                Version = "1.7",
+                FilePath = Path.Combine(contentRoot, "Languages", "English", "Keyed", "All.xml"),
+                Key = "Greeting",
+                OriginalText = "Hello",
+                TranslatedText = "你好",
+                Status = "已翻译"
+            }
+        };
+
+        var result = _service.GenerateFilesDetailed(_tempDir, "ChineseSimplified", items);
+
+        // 散文件照常写入（不丢用户工作），但必须报告被 tar 遮蔽且不算完全成功。
+        result.SuccessfulFileCount.Should().Be(1);
+        result.ShadowedArchives.Should().ContainSingle().Which.Should().Be(archive);
+        result.IsCompleteSuccess.Should().BeFalse();
+        File.Exists(Path.Combine(contentRoot, "Languages", "ChineseSimplified", "Keyed", "All.xml")).Should().BeTrue();
+    }
+
+    [Fact]
+    public void GenerateFilesDetailed_WithoutLanguageArchive_ReportsNoShadowedArchive()
+    {
+        var contentRoot = Path.Combine(_tempDir, "1.7");
+        var items = new List<TranslationItem>
+        {
+            new()
+            {
+                DefType = "Keyed",
+                Version = "1.7",
+                FilePath = Path.Combine(contentRoot, "Languages", "English", "Keyed", "All.xml"),
+                Key = "Greeting",
+                OriginalText = "Hello",
+                TranslatedText = "你好",
+                Status = "已翻译"
+            }
+        };
+
+        var result = _service.GenerateFilesDetailed(_tempDir, "ChineseSimplified", items);
+
+        result.ShadowedArchives.Should().BeEmpty();
+        result.IsCompleteSuccess.Should().BeTrue();
+    }
 }

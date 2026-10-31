@@ -49,6 +49,12 @@ public sealed class ScanDiagnostics
     public bool LoadFolderFallbackDueToError { get; set; }
     public int LoadFolderCount { get; set; }
 
+    /// <summary>LoadFolders.xml 中实际启用的版本节点（1.7 只会启用一个）；回退到目录扫描时为空。</summary>
+    public string LoadFolderVersionKey { get; set; } = string.Empty;
+
+    /// <summary>命中的语言 .tar 压缩包路径（1.7 会优先读取 tar，散文件不生效）。</summary>
+    public List<string> DetectedLanguageArchives { get; set; } = [];
+
     public int LanguageDirectoryCount { get; set; }
 
     public int DefFileCount { get; set; }

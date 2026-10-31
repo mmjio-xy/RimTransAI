@@ -148,6 +148,19 @@ public partial class SettingsViewModel : ViewModelBase
         }
 
         SelectedModSource = ModSourceFolders.FirstOrDefault();
+
+        // 核心程序集路径自动探测：1.7 起在游戏根目录，旧版本在 *_Data\Managed。
+        // 配置为空或已失效（如游戏升级换了目录）时，从 Mod 源目录向上回溯，并探测 Steam/GOG 常见安装位置。
+        if (!RimWorldAssemblyLocator.IsValidAssembly(AssemblyCSharpPath))
+        {
+            var detected = RimWorldAssemblyLocator.Resolve(
+                null,
+                ModSourceFolders.Select(source => (string?)source.FolderPath).ToArray());
+            if (detected != null)
+            {
+                AssemblyCSharpPath = detected;
+            }
+        }
     }
 
     [RelayCommand]
@@ -394,9 +407,17 @@ public partial class SettingsViewModel : ViewModelBase
     {
         var errors = new List<string>();
 
-        if (string.IsNullOrWhiteSpace(AssemblyCSharpPath))
+        // 允许留空：保存时再尝试自动探测一次（1.7 游戏根目录 / 旧版 *_Data\Managed / Steam / GOG）
+        var resolvedAssemblyPath = RimWorldAssemblyLocator.Resolve(
+            AssemblyCSharpPath,
+            ModSourceFolders.Select(source => (string?)source.FolderPath).ToArray());
+        if (resolvedAssemblyPath == null)
         {
             errors.Add("Assembly-CSharp.dll 路径");
+        }
+        else
+        {
+            AssemblyCSharpPath = resolvedAssemblyPath;
         }
 
         if (TranslationApis.Count == 0)

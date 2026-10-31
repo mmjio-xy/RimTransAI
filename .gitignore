@@ -23,5 +23,6 @@ CONTRIBUTING.md
 docs/*
 doxs/
 .ilspy/
+.tools/
 .spec-workflow/
 /.codegraph/

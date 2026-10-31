@@ -107,7 +107,7 @@ public class GameLoadOrderPlannerTests
     }
 
     [Fact]
-    public void Plan_WithLoadFolders_InCoverageMode_AlsoIncludesOtherVersionSections()
+    public void Plan_WithLoadFolders_WhenNoVersionMatches_FallsBackToDefaultSection()
     {
         var root = CreateTempModRoot();
         try
@@ -136,7 +136,11 @@ public class GameLoadOrderPlannerTests
 
             var plan = planner.Plan(context);
 
-            plan.Select(x => x.RelativePath).Should().ContainInOrder("V2", "Common");
+            // 1.7 的 ModContentPack.InitLoadFolders 只启用一个版本节点；
+            // v2.0 高于当前版本 1.5，因此落到 default。
+            plan.Select(x => x.RelativePath).Should().ContainInOrder("Common");
+            plan.Should().ContainSingle();
+            planner.LastSelectedVersionKey.Should().Be("default");
         }
         finally
         {
@@ -145,7 +149,7 @@ public class GameLoadOrderPlannerTests
     }
 
     [Fact]
-    public void Plan_WithLoadFolders_IncludesEntriesFromMultipleVersionSections()
+    public void Plan_WithLoadFolders_SelectsOnlyHighestMatchingVersionSection()
     {
         var root = CreateTempModRoot();
         try
@@ -177,8 +181,10 @@ public class GameLoadOrderPlannerTests
 
             var plan = planner.Plan(context);
 
-            plan.Select(x => x.RelativePath).Should().ContainInOrder("Common", "1.6", "1.5");
+            // 只加载 v1.6 一套；v1.5 不再叠加（与引擎单版本选择一致）。
+            plan.Select(x => x.RelativePath).Should().ContainInOrder("Common", "1.6");
             plan.Select(x => x.FullPath).Distinct(StringComparer.OrdinalIgnoreCase).Count().Should().Be(plan.Count);
+            planner.LastSelectedVersionKey.Should().Be("1.6");
         }
         finally
         {
@@ -281,6 +287,166 @@ public class GameLoadOrderPlannerTests
             var plan = planner.Plan(context);
 
             plan.Select(x => x.RelativePath).Should().Contain("Optional");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Plan_WithLoadFolders_PrefersExactFullVersionMatch()
+    {
+        var root = CreateTempModRoot();
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(root, "D1100"));
+            Directory.CreateDirectory(Path.Combine(root, "D19"));
+
+            File.WriteAllText(Path.Combine(root, "LoadFolders.xml"), """
+                <loadFolders>
+                  <v1.10.0>
+                    <li>D1100</li>
+                  </v1.10.0>
+                  <v1.9>
+                    <li>D19</li>
+                  </v1.9>
+                </loadFolders>
+                """);
+
+            var planner = new GameLoadOrderPlanner();
+            var context = new ScanContext(
+                root,
+                "English",
+                "English",
+                new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+                "1.10.0");
+
+            var plan = planner.Plan(context);
+
+            // 引擎先用完整版本串精确匹配；字符串降序会把 1.9 排在 1.10.0 前面，所以这里必须靠精确匹配。
+            plan.Select(x => x.RelativePath).Should().ContainInOrder("D1100");
+            planner.LastSelectedVersionKey.Should().Be("1.10.0");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Plan_WithLoadFolders_SelectsHighestVersionNotGreaterThanCurrent()
+    {
+        var root = CreateTempModRoot();
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(root, "D15"));
+            Directory.CreateDirectory(Path.Combine(root, "D16"));
+            Directory.CreateDirectory(Path.Combine(root, "D18"));
+
+            File.WriteAllText(Path.Combine(root, "LoadFolders.xml"), """
+                <loadFolders>
+                  <v1.5>
+                    <li>D15</li>
+                  </v1.5>
+                  <v1.6>
+                    <li>D16</li>
+                  </v1.6>
+                  <v1.8>
+                    <li>D18</li>
+                  </v1.8>
+                </loadFolders>
+                """);
+
+            var planner = new GameLoadOrderPlanner();
+            var context = new ScanContext(
+                root,
+                "English",
+                "English",
+                new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+                "1.7");
+
+            var plan = planner.Plan(context);
+
+            plan.Select(x => x.RelativePath).Should().ContainInOrder("D16");
+            planner.LastSelectedVersionKey.Should().Be("1.6");
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Plan_WithLoadFolders_WhenNoSectionApplies_FallsBackToDirectoryScan()
+    {
+        var root = CreateTempModRoot();
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(root, "D20"));
+            Directory.CreateDirectory(Path.Combine(root, "1.5"));
+            Directory.CreateDirectory(Path.Combine(root, "Common"));
+
+            File.WriteAllText(Path.Combine(root, "LoadFolders.xml"), """
+                <loadFolders>
+                  <v2.0>
+                    <li>D20</li>
+                  </v2.0>
+                </loadFolders>
+                """);
+
+            var planner = new GameLoadOrderPlanner();
+            var context = new ScanContext(
+                root,
+                "English",
+                "English",
+                new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+                "1.5");
+
+            var plan = planner.Plan(context);
+
+            plan.Select(x => x.RelativePath).Should().ContainInOrder("1.5", "Common", ".");
+            plan.Select(x => x.RelativePath).Should().NotContain("D20");
+            planner.LastSelectedVersionKey.Should().BeEmpty();
+        }
+        finally
+        {
+            Directory.Delete(root, recursive: true);
+        }
+    }
+
+    [Fact]
+    public void Plan_WithLoadFolders_WhenSelectedSectionHasNoExistingFolder_FallsBackWithWarning()
+    {
+        var root = CreateTempModRoot();
+        try
+        {
+            Directory.CreateDirectory(Path.Combine(root, "1.5"));
+            Directory.CreateDirectory(Path.Combine(root, "Common"));
+
+            File.WriteAllText(Path.Combine(root, "LoadFolders.xml"), """
+                <loadFolders>
+                  <v1.5>
+                    <li>MissingFolder</li>
+                  </v1.5>
+                </loadFolders>
+                """);
+
+            var logger = new RecordingLogger<GameLoadOrderPlanner>();
+            var planner = new GameLoadOrderPlanner(logger);
+            var context = new ScanContext(
+                root,
+                "English",
+                "English",
+                new HashSet<string>(StringComparer.OrdinalIgnoreCase),
+                "1.5");
+
+            var plan = planner.Plan(context);
+
+            plan.Select(x => x.RelativePath).Should().ContainInOrder("1.5", "Common", ".");
+            logger.Records.Should().Contain(record =>
+                record.Level == Microsoft.Extensions.Logging.LogLevel.Warning &&
+                record.Message.Contains("已回退到目录扫描", StringComparison.Ordinal));
         }
         finally
         {

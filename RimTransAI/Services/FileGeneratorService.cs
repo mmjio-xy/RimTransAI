@@ -14,9 +14,18 @@ public sealed record FileGenerationResult(
     int DeletedFileCount,
     int FailedFileCount,
     int FailedNodeCount,
-    IReadOnlyList<string> SuccessfulVersions)
+    IReadOnlyList<string> SuccessfulVersions,
+    IReadOnlyList<string>? ShadowedLanguageArchives = null)
 {
-    public bool IsCompleteSuccess => FailedFileCount == 0 && FailedNodeCount == 0;
+    /// <summary>
+    /// 1.7 起 Languages 下的语言目录可以被同名 .tar 取代，且引擎优先读取 tar。
+    /// 这些路径非空时，本次写入的散文件不会被游戏加载，因此不算完全成功。
+    /// </summary>
+    public IReadOnlyList<string> ShadowedArchives => ShadowedLanguageArchives ?? [];
+
+    public bool IsCompleteSuccess =>
+        FailedFileCount == 0 && FailedNodeCount == 0 && ShadowedArchives.Count == 0;
+
     public int ChangedFileCount => SuccessfulFileCount + DeletedFileCount;
 }
 
@@ -55,6 +64,11 @@ public class FileGeneratorService
             .Where(x => !string.IsNullOrWhiteSpace(x.TargetPath))
             .GroupBy(x => x.TargetPath!, StringComparer.OrdinalIgnoreCase)
             .ToList();
+
+        var shadowedArchives = FindShadowedLanguageArchives(modRootPath, groupedByTargetPath
+            .SelectMany(group => group.Select(x => x.Item.Version))
+            .Distinct(StringComparer.OrdinalIgnoreCase),
+            targetLang);
 
         var successfulFileCount = 0;
         var deletedFileCount = 0;
@@ -151,12 +165,79 @@ public class FileGeneratorService
             }
         }
 
+        if (shadowedArchives.Count > 0 && (successfulFileCount > 0 || deletedFileCount > 0))
+        {
+            foreach (var archive in shadowedArchives)
+            {
+                _logger.LogUserError(
+                    null,
+                    "目标语言目录被压缩包遮蔽，本次写入不会生效：{ArchivePath}。" +
+                    "1.7 引擎优先读取 .tar，请备份后删除或重命名该压缩包，再重新生成。",
+                    archive);
+            }
+        }
+
         return new FileGenerationResult(
             successfulFileCount,
             deletedFileCount,
             failedFileCount,
             failedNodeCount,
-            successfulVersions.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToArray());
+            successfulVersions.OrderBy(x => x, StringComparer.OrdinalIgnoreCase).ToArray(),
+            shadowedArchives);
+    }
+
+    /// <summary>
+    /// 找出会被 .tar 遮蔽的语言目录：1.7 的 AbstractFilesystem 在 Languages/X.tar 存在时读取 tar 并忽略 X 目录。
+    /// </summary>
+    private static List<string> FindShadowedLanguageArchives(
+        string modRootPath,
+        IEnumerable<string?> versions,
+        string targetLang)
+    {
+        var result = new List<string>();
+        if (string.IsNullOrWhiteSpace(targetLang))
+        {
+            return result;
+        }
+
+        var contentRoots = new List<string> { modRootPath };
+        foreach (var version in versions)
+        {
+            if (!string.IsNullOrWhiteSpace(version))
+            {
+                contentRoots.Add(Path.Combine(modRootPath, version!));
+            }
+        }
+
+        foreach (var contentRoot in contentRoots.Distinct(StringComparer.OrdinalIgnoreCase))
+        {
+            var languagesRoot = Path.Combine(contentRoot, "Languages");
+            if (!Directory.Exists(languagesRoot))
+            {
+                continue;
+            }
+
+            try
+            {
+                var archive = Directory
+                    .EnumerateFiles(languagesRoot, "*.tar", SearchOption.TopDirectoryOnly)
+                    .FirstOrDefault(file => string.Equals(
+                        Path.GetFileNameWithoutExtension(file),
+                        targetLang.Trim(),
+                        StringComparison.OrdinalIgnoreCase));
+
+                if (archive != null && !result.Contains(archive, StringComparer.OrdinalIgnoreCase))
+                {
+                    result.Add(archive);
+                }
+            }
+            catch (Exception)
+            {
+                // 目录不可读时由后续写入路径给出明确错误。
+            }
+        }
+
+        return result;
     }
 
     private string DetermineOutputPath(string modRoot, string originalPath, string defType, string version, string targetLang)

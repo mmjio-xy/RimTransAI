@@ -29,10 +29,17 @@ public sealed class GameLoadOrderPlanner
 
     public bool LastPlanUsedFallbackDueToError { get; private set; }
 
+    /// <summary>
+    /// 1.7 引擎只会启用 LoadFolders.xml 中的一个版本节点（完整版本串精确匹配 → 不大于当前版本的最大版本 → default），
+    /// 这里是本次规划实际启用的节点键（已小写、去掉前导 v）；未使用 LoadFolders.xml 或回退到目录扫描时为空字符串。
+    /// </summary>
+    public string LastSelectedVersionKey { get; private set; } = string.Empty;
+
     public IReadOnlyList<LoadFolderPlanEntry> Plan(ScanContext context)
     {
         ArgumentNullException.ThrowIfNull(context);
         LastPlanUsedFallbackDueToError = false;
+        LastSelectedVersionKey = string.Empty;
         if (!Directory.Exists(context.ModRootPath))
         {
             return [];
@@ -62,18 +69,34 @@ public sealed class GameLoadOrderPlanner
             return false;
         }
 
-        var entries = BuildCoverageEntriesFromLoadFolders(
-            context.ModRootPath,
-            foldersByVersion,
-            context.ActivePackageIds);
-
-        if (entries.Count == 0 && foldersByVersion.TryGetValue("default", out var defaultFolders))
+        // 与 ModContentPack.InitLoadFolders 一致：只有一个版本节点会被游戏启用。
+        var versionKey = SelectVersionKey(foldersByVersion.Keys, context.CurrentGameVersion);
+        if (versionKey == null)
         {
-            entries = BuildEntriesFromRules(context.ModRootPath, defaultFolders, context.ActivePackageIds);
+            _logger.InfoMessage(
+                $"LoadFolders.xml 中没有适用于当前游戏版本（{context.CurrentGameVersion}）的节点，已回退到目录扫描：{loadFoldersPath}");
+            return false;
         }
 
+        var entries = BuildEntriesFromRules(
+            context.ModRootPath,
+            foldersByVersion[versionKey],
+            context.ActivePackageIds);
+
+        if (entries.Count == 0)
+        {
+            // 游戏在这种情况下会加载不到任何目录；为了让用户仍能翻译（例如节点目录还没建好），
+            // 这里回退到目录扫描并明确告警。
+            _logger.LogUserWarning(
+                "LoadFolders.xml 选中的版本节点「{VersionKey}」下没有任何可用目录，已回退到目录扫描：{ModRootPath}",
+                versionKey,
+                context.ModRootPath);
+            return false;
+        }
+
+        LastSelectedVersionKey = versionKey;
         plan = entries;
-        return plan.Count > 0;
+        return true;
     }
 
     private Dictionary<string, List<LoadFolderRule>> ParseLoadFoldersByVersion(string loadFoldersPath)
@@ -335,69 +358,50 @@ public sealed class GameLoadOrderPlanner
         return VersionDirRegex.IsMatch(firstSegment) ? firstSegment : string.Empty;
     }
 
-    private static List<LoadFolderPlanEntry> BuildCoverageEntriesFromLoadFolders(
-        string modRootPath,
-        Dictionary<string, List<LoadFolderRule>> foldersByVersion,
-        IReadOnlyCollection<string> activePackageIds)
+    /// <summary>
+    /// 复刻 ModContentPack.InitLoadFolders 的版本节点选择：
+    /// ① 精确匹配 VersionControl.CurrentVersionString（形如 1.7.4990，只有完整版本串才会命中）；
+    /// ② 取不大于当前版本的版本节点中字符串降序的最大者（引擎用 orderby x descending）；
+    /// ③ 再否则取 default；④ 都不存在则交由目录扫描回退。
+    /// </summary>
+    private static string? SelectVersionKey(IEnumerable<string> definedVersions, string? currentGameVersion)
     {
-        var versionKeys = foldersByVersion.Keys
-            .Where(x => !string.Equals(x, "default", StringComparison.OrdinalIgnoreCase))
-            .Select(x => (Key: x, Parsed: ParseVersionSafe(x)))
-            .OrderByDescending(x => x.Parsed)
-            .ThenByDescending(x => x.Key, StringComparer.OrdinalIgnoreCase)
-            .Select(x => x.Key)
+        var versions = definedVersions
+            .Where(x => !string.IsNullOrWhiteSpace(x))
             .ToList();
 
-        var result = new List<LoadFolderPlanEntry>();
-        var seenFullPaths = new HashSet<string>(StringComparer.OrdinalIgnoreCase);
-        var order = 0;
-
-        foreach (var versionKey in versionKeys)
+        if (versions.Count == 0)
         {
-            if (!foldersByVersion.TryGetValue(versionKey, out var rules) || rules.Count == 0)
+            return null;
+        }
+
+        var currentVersionKey = NormalizeVersionKey(currentGameVersion);
+        if (!string.IsNullOrEmpty(currentVersionKey) && currentVersionKey.Split('.').Length >= 3)
+        {
+            var exact = versions.FirstOrDefault(x =>
+                string.Equals(NormalizeVersionKey(x), currentVersionKey, StringComparison.OrdinalIgnoreCase));
+            if (exact != null)
             {
-                continue;
-            }
-
-            var entries = BuildEntriesFromRules(modRootPath, rules, activePackageIds);
-            foreach (var entry in entries)
-            {
-                if (!seenFullPaths.Add(entry.FullPath))
-                {
-                    continue;
-                }
-
-                var normalizedRelativePath = NormalizeRelativePath(entry.RelativePath);
-                var version = !string.IsNullOrWhiteSpace(entry.Version)
-                    ? entry.Version
-                    : InferVersionFromRelativePath(normalizedRelativePath);
-
-                result.Add(new LoadFolderPlanEntry(
-                    entry.FullPath,
-                    entry.RelativePath,
-                    version,
-                    order++));
+                return exact;
             }
         }
 
-        if (foldersByVersion.TryGetValue("default", out var defaultRules) && defaultRules.Count > 0)
+        var currentVersion = ParseVersionSafe(currentGameVersion);
+        if (currentVersion != null)
         {
-            var defaultEntries = BuildEntriesFromRules(modRootPath, defaultRules, activePackageIds);
-            foreach (var entry in defaultEntries)
+            var fallback = versions
+                .Where(x => !string.Equals(x, "default", StringComparison.OrdinalIgnoreCase))
+                .Where(x => x.Contains('.'))
+                .Where(x => ParseVersionSafe(x) is { } parsed && parsed <= currentVersion)
+                .OrderByDescending(x => x, StringComparer.Ordinal)
+                .FirstOrDefault();
+            if (fallback != null)
             {
-                if (!seenFullPaths.Add(entry.FullPath))
-                {
-                    continue;
-                }
-
-                result.Add(new LoadFolderPlanEntry(
-                    entry.FullPath,
-                    entry.RelativePath,
-                    entry.Version,
-                    order++));
+                return fallback;
             }
         }
 
-        return result;
+        return versions.FirstOrDefault(x =>
+            string.Equals(x, "default", StringComparison.OrdinalIgnoreCase));
     }
 }

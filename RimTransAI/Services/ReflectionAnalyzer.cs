@@ -193,17 +193,33 @@ public class ReflectionAnalyzer
     /// </summary>
     private void AnalyzeTypeHierarchy(TypeDefinition baseType)
     {
-        // 分析基类本身
-        AnalyzeTypeFields(baseType);
+        // 广度优先遍历整棵继承树。
+        // 旧实现只遍历直接派生类，导致 Verse.BuildableDef 等中间基类之下的类型
+        // （ThingDef / TerrainDef / HairDef / BeardDef / TattooDef / StuffCategoryDef）被整体漏掉。
+        var visited = new HashSet<string>(StringComparer.Ordinal) { baseType.FullName };
+        var pending = new Queue<TypeDefinition>();
+        pending.Enqueue(baseType);
 
-        // [性能优化] 直接从继承关系图获取派生类，O(1) 查找替代 O(n²) 遍历
-        if (_inheritanceGraph.TryGetValue(baseType.FullName, out var derivedTypeNames))
+        while (pending.Count > 0)
         {
+            var current = pending.Dequeue();
+            AnalyzeTypeFields(current);
+
+            if (!_inheritanceGraph.TryGetValue(current.FullName, out var derivedTypeNames))
+            {
+                continue;
+            }
+
             foreach (var derivedTypeName in derivedTypeNames)
             {
+                if (!visited.Add(derivedTypeName))
+                {
+                    continue;
+                }
+
                 if (_typeCache.TryGetValue(derivedTypeName, out var derivedType))
                 {
-                    AnalyzeTypeFields(derivedType);
+                    pending.Enqueue(derivedType);
                 }
             }
         }
