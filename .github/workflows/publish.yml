@@ -34,8 +34,9 @@ jobs:
             **/*.csproj
             **/packages.lock.json
 
+      # 不使用 --locked-mode：lock 文件含 RuntimeIdentifiers 等发布期差异，普通还原即可。
       - name: Restore dependencies
-        run: dotnet restore RimTransAI.sln --locked-mode
+        run: dotnet restore RimTransAI.sln
 
       - name: Build
         run: dotnet build RimTransAI.sln --no-restore -c Release /p:ContinuousIntegrationBuild=true
@@ -72,7 +73,7 @@ jobs:
             **/packages.lock.json
 
       - name: Restore dependencies
-        run: dotnet restore ./RimTransAI/RimTransAI.csproj --locked-mode
+        run: dotnet restore ./RimTransAI/RimTransAI.csproj
 
       - name: Build release metadata
         id: metadata

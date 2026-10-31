@@ -30,8 +30,10 @@ jobs:
             **/*.csproj
             **/packages.lock.json
 
+      # 不使用 --locked-mode：lock 文件里含 RuntimeIdentifiers（发布 -r win-x64 时写入）
+      # 与 SDK 补丁相关的隐式包版本，CI 的普通还原与它天然不一致，locked mode 会误报 NU1004。
       - name: Restore dependencies
-        run: dotnet restore RimTransAI.sln --locked-mode
+        run: dotnet restore RimTransAI.sln
 
       - name: Build
         run: dotnet build RimTransAI.sln --no-restore -c Release /p:ContinuousIntegrationBuild=true
