@@ -41,6 +41,12 @@
     <PackageReference Include="Serilog.Sinks.File" Version="7.0.0" />
   </ItemGroup>
 
+  <!-- 固定 ILLink 工具包版本：该包由 SDK 按补丁版本隐式注入，锁定到显式版本可让
+       packages.lock.json 与 locked mode 还原在不同 SDK 补丁的 CI 环境中保持一致。 -->
+  <ItemGroup>
+    <PackageReference Include="Microsoft.NET.ILLink.Tasks" Version="9.0.21" PrivateAssets="all" />
+  </ItemGroup>
+
   <!-- 裁剪保护配置 -->
   <ItemGroup>
     <TrimmerRootAssembly Include="Avalonia.Themes.Fluent" />
